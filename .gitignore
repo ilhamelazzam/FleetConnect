@@ -1,0 +1,13 @@
+frontend/node_modules/
+frontend/dist/
+backend/venv/
+backend/.env
+backend/*.db
+backend/tests/*.db
+backend/.pytest_cache/
+backend/.ruff_cache/
+backend/*.egg-info/
+backend/__pycache__/
+backend/**/*.pyc
+backend/**/*.pyo
+backend/**/*.pyd

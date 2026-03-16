@@ -1,0 +1,381 @@
+Créer le prototype frontend complet d’une plateforme web professionnelle, moderne et intelligente de gestion de flotte téléphonique, destinée à une entreprise.
+
+Nom du projet :
+“Plateforme intelligente de gestion de flotte téléphonique basée sur l’analytics prédictif et la détection d’anomalies”
+
+Objectif du site :
+Le site web doit permettre de centraliser et visualiser les données d’une flotte téléphonique d’entreprise, suivre les coûts, détecter les anomalies de consommation, afficher des prédictions de coûts futurs, générer des alertes, proposer des recommandations d’optimisation, et aider à la prise de décision.
+
+Style global souhaité :
+- Design SaaS professionnel, moderne, propre, premium
+- Inspiré de Vercel, Linear, Stripe Dashboard, Power BI moderne
+- Interface en français
+- Fond clair élégant avec sections blanches, gris très clair et touches bleu / cyan / violet léger
+- Apparence très professionnelle pour soutenance de PFE
+- Typographie moderne type Inter / Manrope
+- Icônes simples, modernes, cohérentes
+- Cartes avec coins arrondis
+- Ombres légères
+- Beaucoup d’espace entre les éléments
+- Dashboard responsive desktop-first
+- Style analytique et data-driven
+- Interface réaliste et prête à être codée ensuite en React, Angular ou HTML/CSS
+
+Structure attendue :
+Créer plusieurs écrans / pages reliés entre eux dans un même prototype web desktop.
+
+Pages à générer :
+
+1. Page de connexion
+2. Tableau de bord principal
+3. Page gestion des lignes
+4. Page gestion des forfaits
+5. Page consommation / historique
+6. Page anomalies & alertes
+7. Page prédictions & analytics
+8. Page recommandations d’optimisation
+9. Page rapports & exports
+10. Page utilisateurs / rôles
+11. Page paramètres
+12. Détail d’une ligne téléphonique
+13. Détail d’une alerte
+14. Version mobile responsive simplifiée de 2 ou 3 écrans clés
+
+========================
+1) PAGE DE CONNEXION
+========================
+Créer une page login moderne et professionnelle.
+Contenu :
+- Logo ou icône abstraite telecom / analytics / AI
+- Titre : “Connexion à la plateforme”
+- Sous-texte : “Pilotage intelligent de la flotte téléphonique”
+- Champ Email
+- Champ Mot de passe
+- Case “Se souvenir de moi”
+- Lien “Mot de passe oublié”
+- Bouton principal “Se connecter”
+- Petit encadré à droite ou en fond avec aperçu du dashboard (mockup visuel)
+- Style premium, sobre, entreprise
+
+========================
+2) TABLEAU DE BORD PRINCIPAL
+========================
+Créer une page dashboard principale très riche et élégante.
+
+Layout :
+- Barre latérale gauche fixe
+- Header en haut
+- Grande zone de contenu principale
+
+Sidebar :
+- Logo + nom du produit
+- Menu :
+  - Tableau de bord
+  - Lignes
+  - Forfaits
+  - Consommations
+  - KPI & Analytics
+  - Anomalies & Alertes
+  - Prédictions
+  - Recommandations
+  - Rapports
+  - Utilisateurs
+  - Paramètres
+
+Header :
+- Barre de recherche
+- Sélecteur de période
+- Filtre département
+- Filtre opérateur
+- Notifications
+- Avatar utilisateur
+- Bouton Export
+
+Zone principale :
+Créer des cartes KPI en haut :
+- Coût total mensuel
+- Coût moyen par ligne
+- Nombre de lignes actives
+- Dépassements détectés
+- Alertes critiques
+- Tendance de consommation
+
+Ensuite ajouter :
+- Un grand graphique principal d’évolution des coûts mensuels
+- Un graphique secondaire de consommation par type : Voix / Data / SMS / Roaming
+- Un tableau “Top lignes les plus consommatrices”
+- Une section “Alertes récentes”
+- Une section “Recommandations IA”
+- Une section “Prédiction du mois prochain”
+- Une section “Répartition par département”
+- Une zone statut système / santé pipeline données
+
+Le dashboard doit être très visuel, réaliste, avec données fictives cohérentes.
+
+========================
+3) PAGE GESTION DES LIGNES
+========================
+Créer une page de gestion des lignes téléphoniques.
+Contenu :
+- Titre : “Gestion des lignes”
+- Bouton “Ajouter une ligne”
+- Filtres : statut, département, opérateur
+- Tableau moderne avec colonnes :
+  - Numéro de ligne
+  - Utilisateur affecté
+  - Département
+  - Opérateur
+  - Statut
+  - Forfait actuel
+  - Consommation actuelle
+  - Score de risque
+  - Actions
+- Action voir / modifier / suspendre
+- Panneau latéral ou modal pour ajout / modification
+- Badges de statut colorés
+- Interface claire et professionnelle
+
+========================
+4) PAGE GESTION DES FORFAITS
+========================
+Créer une page pour gérer les forfaits.
+Contenu :
+- Liste des forfaits disponibles
+- Cartes ou tableau avec :
+  - Nom du forfait
+  - Opérateur
+  - Prix mensuel
+  - Plafond voix
+  - Plafond data
+  - SMS inclus
+  - Options roaming
+- Bouton créer / modifier forfait
+- Comparateur visuel de forfaits
+- Section “Forfaits recommandés par IA”
+
+========================
+5) PAGE CONSOMMATION / HISTORIQUE
+========================
+Créer une page analytique de consommation.
+Contenu :
+- Titre : “Historique de consommation”
+- Filtres avancés : date, ligne, département, opérateur, type d’usage
+- Graphiques :
+  - Courbe d’évolution de consommation
+  - Histogramme coût par ligne
+  - Camembert usage voix/data/sms/roaming
+- Tableau détaillé des événements ou consommations agrégées
+- Option export PDF / Excel
+- Encadré qualité des données / dernière synchronisation
+
+========================
+6) PAGE ANOMALIES & ALERTES
+========================
+Créer une page dédiée à la détection d’anomalies.
+Objectif visuel : montrer que le système utilise l’IA.
+
+Contenu :
+- Titre : “Anomalies & Alertes”
+- KPIs :
+  - Nombre d’anomalies détectées
+  - Alertes ouvertes
+  - Alertes critiques
+  - Score moyen de risque
+- Graphique de détection anormale avec points mis en évidence
+- Tableau ou cartes d’alertes avec :
+  - ID alerte
+  - Ligne concernée
+  - Type d’anomalie
+  - Score
+  - Sévérité
+  - Date
+  - Statut
+  - Action
+- Couleurs de sévérité :
+  - faible = bleu/gris
+  - moyen = orange
+  - critique = rouge
+- Panneau détail alerte avec :
+  - description
+  - justification IA
+  - historique
+  - bouton “Valider”
+  - bouton “Clôturer”
+  - bouton “Notifier”
+- Section “Logs des alertes”
+
+========================
+7) PAGE PRÉDICTIONS & ANALYTICS
+========================
+Créer une page analytique élégante dédiée aux prévisions.
+Contenu :
+- Titre : “Prédictions de coûts”
+- Carte prédiction du mois prochain
+- Carte budget prévu
+- Carte écart probable
+- Courbe temporelle avec historique réel + forecast futur
+- Segmentations :
+  - par département
+  - par opérateur
+  - par ligne
+- Bloc “Fiabilité du modèle”
+- Bloc “Interprétation simple”
+- Bloc “Variables les plus influentes”
+- Style data science business-friendly
+
+========================
+8) PAGE RECOMMANDATIONS D’OPTIMISATION
+========================
+Créer une page très claire et orientée décision.
+Contenu :
+- Titre : “Recommandations d’optimisation”
+- Cartes de recommandations IA avec :
+  - Ligne concernée
+  - Action recommandée
+  - Impact estimé
+  - Économie potentielle
+  - Niveau de priorité
+  - Justification
+- Exemples d’actions :
+  - Ajuster forfait
+  - Contrôler roaming
+  - Limiter certaines options
+  - Réaffecter ligne
+- Boutons :
+  - Accepter
+  - Rejeter
+  - Examiner
+- Encadré résumé :
+  - Économies potentielles totales
+  - Nombre de lignes optimisables
+- Ajouter un design premium orienté aide à la décision
+
+========================
+9) PAGE RAPPORTS & EXPORTS
+========================
+Créer une page dédiée au reporting.
+Contenu :
+- Rapports disponibles :
+  - Rapport mensuel des coûts
+  - Rapport anomalies
+  - Rapport prédictions
+  - Rapport recommandations
+- Boutons :
+  - Générer PDF
+  - Export Excel
+  - Envoyer par email
+- Historique des exports
+- Cartes de rapports prêtes à télécharger
+- Design sobre, entreprise
+
+========================
+10) PAGE UTILISATEURS / RÔLES
+========================
+Créer une page admin pour gestion des utilisateurs.
+Contenu :
+- Tableau utilisateurs :
+  - Nom
+  - Email
+  - Rôle
+  - Département
+  - Statut
+  - Dernière connexion
+  - Actions
+- Bouton “Ajouter utilisateur”
+- Filtres par rôle
+- Rôles :
+  - Administrateur
+  - Analyste
+  - Manager
+- Style propre, administratif moderne
+
+========================
+11) PAGE PARAMÈTRES
+========================
+Créer une page paramètres système avec sections :
+- Paramètres généraux
+- Paramètres alertes
+- Paramètres modèles IA
+- Paramètres notifications
+- Paramètres sécurité
+- Paramètres intégration opérateurs
+- Formulaires simples, propres, modernes
+
+========================
+12) DÉTAIL D’UNE LIGNE
+========================
+Créer une page détail ligne téléphonique.
+Contenu :
+- Numéro de ligne
+- Utilisateur affecté
+- Département
+- Opérateur
+- Forfait actuel
+- Historique de consommation
+- Alertes associées
+- Score de risque
+- Recommandations IA
+- Évolution mensuelle
+- Boutons actions
+
+========================
+13) DÉTAIL D’UNE ALERTE
+========================
+Créer une page détaillée pour une alerte.
+Contenu :
+- Titre de l’alerte
+- Sévérité
+- Ligne concernée
+- Type d’anomalie
+- Description
+- Date de détection
+- Score de risque
+- Explication IA
+- Actions recommandées
+- Historique de traitement
+- Boutons : valider, clôturer, notifier, exporter
+
+========================
+14) VERSION RESPONSIVE
+========================
+Créer une version responsive simplifiée de :
+- login
+- dashboard
+- alertes
+sur mobile
+mais garder le site comme application web principalement desktop.
+
+========================
+CHARTE VISUELLE
+========================
+Couleurs proposées :
+- Bleu principal : #2563EB
+- Cyan léger : #06B6D4
+- Violet léger : #7C3AED
+- Fond gris clair : #F8FAFC
+- Blanc : #FFFFFF
+- Texte principal : #0F172A
+- Texte secondaire : #64748B
+- Succès : #16A34A
+- Warning : #F59E0B
+- Danger : #DC2626
+
+Utiliser :
+- cartes arrondies
+- espacements généreux
+- tableaux modernes
+- graphiques réalistes
+- badges de statut
+- icônes cohérentes
+- design premium orienté entreprise et analytics
+
+========================
+RÈGLES IMPORTANTES
+========================
+- Tout le prototype doit être en français
+- Utiliser des données fictives réalistes liées à la téléphonie d’entreprise
+- Rendre le résultat visuellement impressionnant pour une soutenance PFE
+- Le design doit montrer clairement l’intelligence artificielle, les alertes, le forecast et l’aide à la décision
+- Le résultat doit sembler crédible, moderne, professionnel et prêt pour implémentation frontend
+- Créer des composants réutilisables : sidebar, topbar, cartes KPI, tableaux, modals, badges, graphiques, cartes d’alertes
+- Garder une cohérence visuelle totale entre toutes les pages

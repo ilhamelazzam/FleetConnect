@@ -1,48 +1,80 @@
 import { ArrowDownRight, ArrowUpRight, LucideIcon } from "lucide-react";
 
+import { cn } from "./ui/utils";
+
 interface KPICardProps {
   title: string;
   value: string;
+  description?: string;
   trend?: string;
   trendUp?: boolean;
   icon: LucideIcon;
   color?: "blue" | "green" | "orange" | "red" | "purple" | "cyan";
+  emphasis?: "default" | "strong";
   variant?: "default" | "total-lines";
+  density?: "default" | "compact";
 }
 
 const colorClasses = {
-  blue: "bg-blue-50 text-[#2563EB]",
-  green: "bg-green-50 text-[#16A34A]",
-  orange: "bg-orange-50 text-[#F59E0B]",
-  red: "bg-red-50 text-[#DC2626]",
-  purple: "bg-purple-50 text-[#7C3AED]",
-  cyan: "bg-cyan-50 text-[#06B6D4]",
+  blue: {
+    card: "bc-surface-primary",
+    icon: "bc-icon-primary",
+  },
+  green: {
+    card: "bc-surface-success",
+    icon: "bc-icon-success",
+  },
+  orange: {
+    card: "bc-surface-warning",
+    icon: "bc-icon-warning",
+  },
+  red: {
+    card: "bc-surface-danger",
+    icon: "bc-icon-danger",
+  },
+  purple: {
+    card: "bc-surface-ai",
+    icon: "bc-icon-ai",
+  },
+  cyan: {
+    card: "bc-surface-primary",
+    icon: "bc-icon-primary",
+  },
 };
 
 export default function KPICard({
   title,
   value,
+  description,
   trend,
   trendUp,
   icon: Icon,
   color = "blue",
+  emphasis = "default",
   variant = "default",
+  density = "default",
 }: KPICardProps) {
   const TrendIcon = trendUp ? ArrowUpRight : ArrowDownRight;
+  const palette = colorClasses[color];
 
   if (variant === "total-lines") {
     return (
-      <div className="min-h-[220px] rounded-[28px] border border-[#DCE5F1] bg-white p-6 shadow-[0_24px_48px_-36px_rgba(15,23,42,0.5)] transition-shadow hover:shadow-[0_30px_60px_-40px_rgba(15,23,42,0.55)]">
+      <div
+        className={cn(
+          "min-h-[220px] rounded-[28px] border p-6 shadow-[0_24px_48px_-36px_rgba(15,23,42,0.5)] transition-shadow hover:shadow-[0_30px_60px_-40px_rgba(15,23,42,0.55)]",
+          palette.card,
+        )}
+      >
         <div className="flex items-start justify-between gap-4">
-          <p className="max-w-[9ch] text-[18px] font-medium leading-[1.35] text-[#64748B] sm:text-[20px]">
+          <p className="max-w-[9ch] text-[18px] font-medium leading-[1.35] text-[var(--bc-neutral-body)] sm:text-[20px]">
             {title}
           </p>
-          <div className="flex h-16 w-16 items-center justify-center rounded-[18px] bg-[#EEF4FF] text-[#2D6CDF]">
+          <div className={cn("flex h-16 w-16 items-center justify-center rounded-[18px]", palette.icon)}>
             <Icon className="h-8 w-8" strokeWidth={2.2} />
           </div>
         </div>
 
-        <p className="mt-6 text-[46px] font-semibold leading-none tracking-[-0.04em] text-[#0F172A] sm:text-[52px]">
+        <p className="mt-6 text-[46px] font-semibold leading-none tracking-[-0.04em] text-[var(--bc-neutral-strong)] sm:text-[52px]">
           {value}
         </p>
 
@@ -56,25 +88,62 @@ export default function KPICard({
     );
   }
 
+  const isStrong = emphasis === "strong";
+  const isCompact = density === "compact";
+
   return (
-    <div className="rounded-xl border border-gray-200 bg-white p-6 transition-shadow hover:shadow-lg">
-      <div className="flex items-start justify-between">
+    <div
+      className={cn(
+        "rounded-2xl border transition-shadow hover:shadow-lg",
+        palette.card,
+        isStrong
+          ? isCompact
+            ? "min-h-[132px] p-4 shadow-[0_16px_34px_-28px_rgba(15,23,42,0.35)]"
+            : "min-h-[152px] p-5 shadow-[0_20px_45px_-34px_rgba(15,23,42,0.35)]"
+          : isCompact
+            ? "min-h-[124px] p-4 shadow-sm"
+            : "min-h-[144px] p-5 shadow-sm",
+      )}
+    >
+      <div className={`flex h-full items-start justify-between ${isCompact ? "gap-3" : "gap-4"}`}>
         <div className="flex-1">
-          <p className="mb-1 text-sm text-[#64748B]">{title}</p>
-          <p className="mb-2 text-2xl font-bold text-[#0F172A]">{value}</p>
+          <p className={`mb-1 font-medium text-[var(--bc-neutral-body)] ${isCompact ? "text-[13px]" : "text-sm"}`}>{title}</p>
+          <p
+            className={`mb-1.5 font-bold text-[var(--bc-neutral-strong)] ${
+              isStrong ? (isCompact ? "text-[26px]" : "text-[30px]") : isCompact ? "text-[22px]" : "text-2xl"
+            }`}
+          >
+            {value}
+          </p>
+          {description ? (
+            <p className={`text-[var(--bc-neutral-body)] ${isCompact ? "text-[13px] leading-5" : "mb-2 text-sm leading-6"}`}>
+              {description}
+            </p>
+          ) : null}
           {trend ? (
             <div
-              className={`inline-flex items-center gap-1 text-sm font-medium ${
+              className={`inline-flex items-center gap-1 font-medium ${
                 trendUp ? "text-[#16A34A]" : "text-[#DC2626]"
-              }`}
+              } ${isCompact ? "mt-1 text-[13px]" : "text-sm"}`}
             >
               <TrendIcon className="h-4 w-4" />
               <span>{trend}</span>
             </div>
           ) : null}
         </div>
-        <div className={`rounded-lg p-3 ${colorClasses[color]}`}>
-          <Icon className="h-6 w-6" />
+        <div
+          className={cn(
+            `flex shrink-0 items-center justify-center rounded-xl ${
+            isStrong ? (isCompact ? "h-12 w-12" : "h-14 w-14") : isCompact ? "h-10 w-10" : "h-12 w-12"
+          }`,
+            palette.icon,
+          )}
+        >
+          <Icon
+            className={
+              isStrong ? (isCompact ? "h-5 w-5" : "h-6 w-6") : isCompact ? "h-[18px] w-[18px]" : "h-5 w-5"
+            }
+          />
         </div>
       </div>
     </div>

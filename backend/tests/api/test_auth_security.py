@@ -1,4 +1,8 @@
+from urllib.parse import unquote_plus
+
 from fastapi.testclient import TestClient
+
+from app.core.config import get_settings
 
 
 def test_login_success_returns_access_and_refresh_tokens(client: TestClient) -> None:
@@ -17,13 +21,16 @@ def test_login_success_returns_access_and_refresh_tokens(client: TestClient) -> 
     assert body["refresh_token"]
 
 
-def test_register_returns_tokens_and_creates_manager_account(client: TestClient) -> None:
+def test_register_returns_tokens_and_creates_standard_user_account(client: TestClient) -> None:
+    photo_url = "data:image/png;base64,cmVnaXN0ZXItcGhvdG8="
+
     response = client.post(
         "/api/v1/auth/register",
         json={
             "full_name": "Ilham Elazzam",
             "email": "ilham.elazzam@emsi-edu.ma",
             "password": "StrongPass123!",
+            "photo_url": photo_url,
         },
     )
 
@@ -32,7 +39,8 @@ def test_register_returns_tokens_and_creates_manager_account(client: TestClient)
     assert body["access_token"]
     assert body["refresh_token"]
     assert body["user"]["email"] == "ilham.elazzam@emsi-edu.ma"
-    assert body["user"]["role"] == "manager"
+    assert body["user"]["role"] == "user"
+    assert body["user"]["photo_url"] == photo_url
 
 
 def test_register_duplicate_email_returns_409(client: TestClient) -> None:
@@ -47,6 +55,24 @@ def test_register_duplicate_email_returns_409(client: TestClient) -> None:
 
     assert response.status_code == 409
     assert response.json()["detail"] == "A user with this email already exists"
+
+
+def test_register_rejects_admin_role_assignment(client: TestClient) -> None:
+    response = client.post(
+        "/api/v1/auth/register",
+        json={
+            "full_name": "Admin Public",
+            "email": "public-admin@test.com",
+            "password": "StrongPass123!",
+            "role": "admin",
+        },
+    )
+
+    assert response.status_code == 403
+    assert (
+        response.json()["detail"]
+        == "Administrator role can only be assigned by an existing administrator"
+    )
 
 
 def test_forgot_password_returns_reset_token_and_sends_email(
@@ -155,18 +181,113 @@ def test_reset_password_updates_credentials(
 
 def test_google_login_redirects_back_to_frontend_when_oauth_is_not_configured(
     client: TestClient,
+    monkeypatch,
 ) -> None:
-    response = client.get("/api/v1/auth/google/login", follow_redirects=False)
+    monkeypatch.setenv("GOOGLE_CLIENT_ID", "")
+    monkeypatch.setenv("GOOGLE_CLIENT_SECRET", "")
+    monkeypatch.setenv("GOOGLE_REDIRECT_URI", "")
+    get_settings.cache_clear()
+
+    try:
+        response = client.get("/api/v1/auth/google/login", follow_redirects=False)
+    finally:
+        get_settings.cache_clear()
 
     assert response.status_code == 302
     assert "localhost:5173/login" in response.headers["location"]
     assert "oauth_error=" in response.headers["location"]
 
 
+def test_google_login_treats_example_credentials_as_not_configured(
+    client: TestClient,
+    monkeypatch,
+) -> None:
+    monkeypatch.setenv("GOOGLE_CLIENT_ID", "your-google-client-id.apps.googleusercontent.com")
+    monkeypatch.setenv("GOOGLE_CLIENT_SECRET", "your-google-client-secret")
+    monkeypatch.setenv(
+        "GOOGLE_REDIRECT_URI",
+        "http://127.0.0.1:8000/api/v1/auth/google/callback",
+    )
+    get_settings.cache_clear()
+
+    try:
+        response = client.get("/api/v1/auth/google/login", follow_redirects=False)
+    finally:
+        get_settings.cache_clear()
+
+    assert response.status_code == 302
+    location = unquote_plus(response.headers["location"])
+    assert "oauth_error=" in response.headers["location"]
+    assert "GOOGLE_CLIENT_ID" in location
+    assert "backend/.env" in location
+
+
+def test_oauth_providers_status_reports_configured_and_missing_providers(
+    client: TestClient,
+    monkeypatch,
+) -> None:
+    monkeypatch.setenv("GOOGLE_CLIENT_ID", "google-client-id.apps.googleusercontent.com")
+    monkeypatch.setenv("GOOGLE_CLIENT_SECRET", "google-client-secret")
+    monkeypatch.setenv(
+        "GOOGLE_REDIRECT_URI",
+        "http://127.0.0.1:8000/api/v1/auth/google/callback",
+    )
+    monkeypatch.setenv("MICROSOFT_CLIENT_ID", "")
+    monkeypatch.setenv("MICROSOFT_CLIENT_SECRET", "")
+    monkeypatch.setenv(
+        "MICROSOFT_REDIRECT_URI",
+        "http://127.0.0.1:8000/api/v1/auth/microsoft/callback",
+    )
+    monkeypatch.setenv("MICROSOFT_TENANT_ID", "common")
+    get_settings.cache_clear()
+
+    try:
+        response = client.get("/api/v1/auth/oauth/providers")
+    finally:
+        get_settings.cache_clear()
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "google": {"configured": True},
+        "microsoft": {"configured": False},
+    }
+
+
+def test_oauth_providers_status_reports_microsoft_when_fully_configured(
+    client: TestClient,
+    monkeypatch,
+) -> None:
+    monkeypatch.setenv("MICROSOFT_CLIENT_ID", "microsoft-client-id")
+    monkeypatch.setenv("MICROSOFT_CLIENT_SECRET", "microsoft-client-secret")
+    monkeypatch.setenv(
+        "MICROSOFT_REDIRECT_URI",
+        "http://127.0.0.1:8000/api/v1/auth/microsoft/callback",
+    )
+    monkeypatch.setenv("MICROSOFT_TENANT_ID", "common")
+    get_settings.cache_clear()
+
+    try:
+        response = client.get("/api/v1/auth/oauth/providers")
+    finally:
+        get_settings.cache_clear()
+
+    assert response.status_code == 200
+    assert response.json()["microsoft"] == {"configured": True}
+
+
 def test_microsoft_login_redirects_back_to_frontend_when_oauth_is_not_configured(
     client: TestClient,
+    monkeypatch,
 ) -> None:
-    response = client.get("/api/v1/auth/microsoft/login", follow_redirects=False)
+    monkeypatch.setenv("MICROSOFT_CLIENT_ID", "")
+    monkeypatch.setenv("MICROSOFT_CLIENT_SECRET", "")
+    monkeypatch.setenv("MICROSOFT_REDIRECT_URI", "")
+    get_settings.cache_clear()
+
+    try:
+        response = client.get("/api/v1/auth/microsoft/login", follow_redirects=False)
+    finally:
+        get_settings.cache_clear()
 
     assert response.status_code == 302
     assert "localhost:5173/login" in response.headers["location"]
@@ -234,14 +355,13 @@ def test_refresh_returns_new_tokens_for_valid_refresh_token(client: TestClient) 
     assert body["user"]["email"] == "admin@bcskills.ma"
 
 
-def test_non_admin_can_list_users(
+def test_non_admin_cannot_list_users(
     client: TestClient,
     manager_headers: dict[str, str],
 ) -> None:
     response = client.get("/api/v1/users/", headers=manager_headers)
 
-    assert response.status_code == 200
-    assert len(response.json()) >= 2
+    assert response.status_code == 403
 
 
 def test_admin_can_create_user_with_photo(
@@ -376,6 +496,8 @@ def test_manager_can_create_update_and_delete_phone_line(
             "department": "Direction",
             "status": "active",
             "monthly_limit": 20,
+            "current_data_usage_gb": 14.5,
+            "previous_data_usage_gb": 12.9,
             "notes": "Création depuis test API",
         },
     )
@@ -383,6 +505,8 @@ def test_manager_can_create_update_and_delete_phone_line(
     assert create_response.status_code == 201
     created_phone_line = create_response.json()
     assert created_phone_line["plan_name"] == "Standard 20Go"
+    assert created_phone_line["current_data_usage_gb"] == 14.5
+    assert created_phone_line["previous_data_usage_gb"] == 12.9
 
     update_response = client.put(
         f"/api/v1/phone-lines/{created_phone_line['id']}",
@@ -391,6 +515,8 @@ def test_manager_can_create_update_and_delete_phone_line(
             "assigned_to": "Ilham Elazzam Update",
             "plan_name": "Business 100Go",
             "monthly_limit": 100,
+            "current_data_usage_gb": 68.5,
+            "previous_data_usage_gb": 61.2,
         },
     )
 
@@ -399,6 +525,8 @@ def test_manager_can_create_update_and_delete_phone_line(
     assert updated_phone_line["assigned_to"] == "Ilham Elazzam Update"
     assert updated_phone_line["plan_name"] == "Business 100Go"
     assert updated_phone_line["monthly_limit"] == 100
+    assert updated_phone_line["current_data_usage_gb"] == 68.5
+    assert updated_phone_line["previous_data_usage_gb"] == 61.2
 
     delete_response = client.delete(
         f"/api/v1/phone-lines/{created_phone_line['id']}",
@@ -412,6 +540,27 @@ def test_manager_can_create_update_and_delete_phone_line(
         headers=manager_headers,
     )
     assert read_response.status_code == 404
+
+
+def test_analyst_cannot_mutate_phone_lines(
+    client: TestClient,
+    analyst_headers: dict[str, str],
+) -> None:
+    create_response = client.post(
+        "/api/v1/phone-lines/",
+        headers=analyst_headers,
+        json={
+            "phone_number": "+212600000011",
+            "operator_name": "Orange Maroc",
+            "plan_name": "Standard 20Go",
+            "assigned_to": "Analyst User",
+            "department": "Finance",
+            "status": "active",
+            "monthly_limit": 20,
+        },
+    )
+
+    assert create_response.status_code == 403
 
 
 def test_login_rate_limit_returns_429_after_repeated_failures(client: TestClient) -> None:

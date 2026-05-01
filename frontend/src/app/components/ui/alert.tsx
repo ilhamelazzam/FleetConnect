@@ -8,9 +8,16 @@ const alertVariants = cva(
   {
     variants: {
       variant: {
-        default: "bg-card text-card-foreground",
+        default:
+          "border-[var(--bc-primary-border)] bg-[linear-gradient(135deg,rgba(59,130,246,0.08),#FFFFFF)] text-card-foreground [&>svg]:text-[var(--bc-primary)] *:data-[slot=alert-title]:text-[var(--bc-primary-hover)]",
         destructive:
-          "text-destructive bg-card [&>svg]:text-current *:data-[slot=alert-description]:text-destructive/90",
+          "border-[var(--bc-danger-border)] bg-[linear-gradient(135deg,rgba(239,68,68,0.1),#FFFFFF)] text-card-foreground [&>svg]:text-[var(--bc-danger)] *:data-[slot=alert-title]:text-[var(--bc-danger-hover)] *:data-[slot=alert-description]:text-[var(--bc-danger)]/90",
+        warning:
+          "border-[var(--bc-warning-border)] bg-[linear-gradient(135deg,rgba(245,158,11,0.12),#FFFFFF)] text-card-foreground [&>svg]:text-[var(--bc-warning)] *:data-[slot=alert-title]:text-[var(--bc-warning-hover)] *:data-[slot=alert-description]:text-[var(--bc-warning-hover)]/90",
+        success:
+          "border-[var(--bc-success-border)] bg-[linear-gradient(135deg,rgba(16,185,129,0.1),#FFFFFF)] text-card-foreground [&>svg]:text-[var(--bc-success)] *:data-[slot=alert-title]:text-[var(--bc-success-hover)] *:data-[slot=alert-description]:text-[var(--bc-success-hover)]/90",
+        ai:
+          "border-[var(--bc-ai-border)] bg-[linear-gradient(135deg,rgba(99,102,241,0.1),rgba(139,92,246,0.08),#FFFFFF)] text-card-foreground [&>svg]:text-[var(--bc-ai-start)] *:data-[slot=alert-title]:text-[var(--bc-ai-end)] *:data-[slot=alert-description]:text-[var(--bc-ai-start)]/90",
       },
     },
     defaultVariants: {

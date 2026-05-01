@@ -25,6 +25,7 @@ interface RegisterInput {
   fullName: string;
   email: string;
   password: string;
+  photoUrl?: string | null;
   role: string;
   remember: boolean;
 }
@@ -129,6 +130,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     fullName,
     email,
     password,
+    photoUrl,
     role,
     remember,
   }: RegisterInput): Promise<ApiUser> => {
@@ -136,6 +138,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       full_name: fullName,
       email,
       password,
+      photo_url: photoUrl ?? null,
       role,
     });
     const session = {

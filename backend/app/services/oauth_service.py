@@ -28,6 +28,17 @@ class OAuthAuthenticationError(RuntimeError):
     pass
 
 
+def _is_missing_oauth_value(value: str | None) -> bool:
+    if value is None:
+        return True
+
+    normalized_value = value.strip()
+    if not normalized_value:
+        return True
+
+    return normalized_value.startswith("your-") or "change-me" in normalized_value
+
+
 def _frontend_login_error_url(message: str) -> str:
     settings = get_settings()
     return f"{settings.frontend_url.rstrip('/')}/login?{urlencode({'oauth_error': message})}"
@@ -70,18 +81,42 @@ def _require_provider_settings(provider: str) -> tuple[str, str, str]:
         client_secret = settings.google_client_secret
         redirect_uri = settings.google_redirect_uri
         provider_label = "Google"
+        tenant_id = None
     else:
         client_id = settings.microsoft_client_id
         client_secret = settings.microsoft_client_secret
         redirect_uri = settings.microsoft_redirect_uri
         provider_label = "Microsoft"
+        tenant_id = settings.microsoft_tenant_id
 
-    if not client_id or not client_secret or not redirect_uri:
+    if (
+        _is_missing_oauth_value(client_id)
+        or _is_missing_oauth_value(client_secret)
+        or _is_missing_oauth_value(redirect_uri)
+        or (provider == MICROSOFT_PROVIDER and _is_missing_oauth_value(tenant_id))
+    ):
+        if provider == GOOGLE_PROVIDER:
+            raise OAuthConfigurationError(
+                "Google OAuth n'est pas configure. Ajoutez GOOGLE_CLIENT_ID et "
+                "GOOGLE_CLIENT_SECRET dans backend/.env, puis autorisez "
+                f"{redirect_uri} dans Google Cloud."
+            )
         raise OAuthConfigurationError(
-            f"{provider_label} OAuth n'est pas configure. Renseignez les variables dans le fichier .env."
+            f"{provider_label} OAuth n'est pas configure. Ajoutez MICROSOFT_CLIENT_ID, "
+            "MICROSOFT_CLIENT_SECRET, MICROSOFT_REDIRECT_URI et MICROSOFT_TENANT_ID "
+            f"dans backend/.env, puis autorisez {redirect_uri} dans Microsoft Entra."
         )
 
     return client_id, client_secret, redirect_uri
+
+
+def is_oauth_provider_configured(provider: str) -> bool:
+    try:
+        _require_provider_settings(provider)
+    except OAuthConfigurationError:
+        return False
+
+    return True
 
 
 def get_oauth_login_redirect_url(provider: str) -> str:

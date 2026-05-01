@@ -106,6 +106,44 @@ cd C:\Users\Microsoft\Desktop\flotte_telephonique\backend
 .\venv\Scripts\python.exe -m uvicorn app.main:app --reload
 ```
 
+## Connexion Google
+
+Le code du flux OAuth Google est deja en place. Pour l'activer en local, il faut creer un client OAuth de type `Web application` dans Google Cloud, puis renseigner ces variables dans `backend/.env` :
+
+```text
+GOOGLE_CLIENT_ID=your-google-client-id.apps.googleusercontent.com
+GOOGLE_CLIENT_SECRET=your-google-client-secret
+GOOGLE_REDIRECT_URI=http://127.0.0.1:8000/api/v1/auth/google/callback
+```
+
+Configuration Google Cloud attendue :
+
+- type de client : `Web application`
+- redirect URI autorisee : `http://127.0.0.1:8000/api/v1/auth/google/callback`
+- frontend local : `http://localhost:5173`
+
+Apres modification de `backend/.env`, redemarre le backend pour recharger la configuration.
+
+## Connexion Microsoft
+
+Le flux OAuth Microsoft est aussi deja implemente. Pour activer le bouton Microsoft en local, cree une application dans `Microsoft Entra ID`, puis renseigne ces variables dans `backend/.env` :
+
+```text
+MICROSOFT_CLIENT_ID=your-microsoft-client-id
+MICROSOFT_CLIENT_SECRET=your-microsoft-client-secret
+MICROSOFT_REDIRECT_URI=http://127.0.0.1:8000/api/v1/auth/microsoft/callback
+MICROSOFT_TENANT_ID=common
+```
+
+Configuration Microsoft attendue :
+
+- type de redirection : `Web`
+- redirect URI autorisee : `http://127.0.0.1:8000/api/v1/auth/microsoft/callback`
+- permissions deleguees Microsoft Graph : `openid`, `profile`, `email`, `User.Read`
+- tenant local simple : `common`
+
+Le frontend verifie maintenant automatiquement si Google et Microsoft sont configures via `GET /api/v1/auth/oauth/providers`. Si Microsoft n'est pas configure, le bouton reste desactive avec un message explicite. Apres modification de `backend/.env`, redemarre le backend pour recharger la configuration.
+
 ### Lint Ruff
 
 ```powershell

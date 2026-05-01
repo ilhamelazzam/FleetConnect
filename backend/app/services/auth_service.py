@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
 from app.core.logging import get_security_logger, mask_email
+from app.core.roles import ADMIN_ROLE, MANAGEMENT_ROLES, normalize_role
 from app.core.security import (
     ACCESS_TOKEN_TYPE,
     REFRESH_TOKEN_TYPE,
@@ -80,7 +81,7 @@ def ensure_default_admin() -> None:
             full_name=settings.default_admin_name,
             email=settings.default_admin_email.lower().strip(),
             hashed_password=hash_password(settings.default_admin_password),
-            role="admin",
+            role=ADMIN_ROLE,
             is_active=True,
         )
         db.add(admin_user)
@@ -140,18 +141,30 @@ def get_current_active_user(current_user: Annotated[User, Depends(get_current_us
     return current_user
 
 
-def require_admin(current_user: Annotated[User, Depends(get_current_active_user)]) -> User:
-    if current_user.role.strip().lower() != "admin":
-        security_logger.warning(
-            "event=permission_denied user_id=%s role=%s required=admin",
-            current_user.id,
-            current_user.role,
-        )
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Administrator access required",
-        )
-    return current_user
+def _build_role_dependency(*allowed_roles: str):
+    def dependency(current_user: Annotated[User, Depends(get_current_active_user)]) -> User:
+        current_role = normalize_role(current_user.role)
+
+        if current_role not in allowed_roles:
+            required_roles = ",".join(allowed_roles)
+            security_logger.warning(
+                "event=permission_denied user_id=%s role=%s required=%s",
+                current_user.id,
+                current_user.role,
+                required_roles,
+            )
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="You are not allowed to access this resource",
+            )
+
+        return current_user
+
+    return dependency
+
+
+require_admin = _build_role_dependency(ADMIN_ROLE)
+require_manager_or_admin = _build_role_dependency(*MANAGEMENT_ROLES)
 
 
 def create_token_response(user: User) -> TokenResponse:

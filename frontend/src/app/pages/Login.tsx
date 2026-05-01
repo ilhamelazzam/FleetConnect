@@ -3,6 +3,7 @@ import { Link, useLocation, useNavigate } from "react-router";
 import { Eye, EyeOff, Lock, Mail } from "lucide-react";
 
 import { useAuth } from "../context/AuthContext";
+import { useOAuthProviders } from "../hooks/useOAuthProviders";
 import { ApiError, oauthApi } from "../lib/api";
 import logoImage from "../../assets/2285601bb4e4d491e253f51df33e674aefdb2011.png";
 
@@ -10,6 +11,7 @@ export default function Login() {
   const navigate = useNavigate();
   const location = useLocation();
   const { login } = useAuth();
+  const { isLoading, isGoogleConfigured } = useOAuthProviders();
   const [showPassword, setShowPassword] = useState(false);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -42,8 +44,7 @@ export default function Login() {
 
     try {
       await login({ email, password, remember });
-      const destination = nextPath === "/admin" ? "/dashboard" : nextPath;
-      navigate(destination, { replace: true });
+      navigate(nextPath, { replace: true });
     } catch (error) {
       if (error instanceof ApiError) {
         setErrorMessage(error.message);
@@ -56,35 +57,14 @@ export default function Login() {
   };
 
   const handleGoogleLogin = () => {
+    if (isLoading || !isGoogleConfigured) {
+      return;
+    }
     window.location.href = oauthApi.googleLoginUrl();
   };
 
-  const handleMicrosoftLogin = () => {
-    window.location.href = oauthApi.microsoftLoginUrl();
-  };
-
-  const handleAdminLogin = async () => {
-    setErrorMessage("");
-    setInfoMessage("");
-    setIsSubmitting(true);
-
-    try {
-      await login({
-        email: "admin@bcskills.ma",
-        password: "Admin123!",
-        remember: true,
-      });
-      navigate("/dashboard", { replace: true });
-    } catch (error) {
-      if (error instanceof ApiError) {
-        setErrorMessage(error.message);
-      } else {
-        setErrorMessage("Connexion administrateur impossible.");
-      }
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
+  const oauthButtonClassName =
+    "flex items-center justify-center gap-2 px-4 py-3 bg-white border rounded-lg text-sm font-medium transition-colors disabled:cursor-not-allowed disabled:border-gray-200 disabled:bg-gray-50 disabled:text-[#94A3B8]";
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-[#F8FAFC] via-white to-[#F1F5F9] flex items-center justify-center p-4">
@@ -194,11 +174,17 @@ export default function Login() {
               </div>
             </div>
 
-            <div className="mt-6 grid grid-cols-2 gap-3">
+            <div className="mt-6 grid grid-cols-1 gap-3">
               <button
                 type="button"
                 onClick={handleGoogleLogin}
-                className="flex items-center justify-center gap-2 px-4 py-3 bg-white border border-gray-200 rounded-lg text-sm font-medium text-[#0F172A] hover:bg-[#F8FAFC] transition-colors"
+                disabled={isLoading || !isGoogleConfigured}
+                className={`${oauthButtonClassName} border-gray-200 text-[#0F172A] hover:bg-[#F8FAFC]`}
+                title={
+                  !isLoading && !isGoogleConfigured
+                    ? "Configurez Google OAuth dans backend/.env pour activer ce bouton."
+                    : undefined
+                }
               >
                 <svg className="w-5 h-5" viewBox="0 0 24 24">
                   <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" />
@@ -208,33 +194,7 @@ export default function Login() {
                 </svg>
                 <span>Google</span>
               </button>
-
-              <button
-                type="button"
-                onClick={handleMicrosoftLogin}
-                className="flex items-center justify-center gap-2 px-4 py-3 bg-white border border-gray-200 rounded-lg text-sm font-medium text-[#0F172A] hover:bg-[#F8FAFC] transition-colors"
-              >
-                <svg className="w-5 h-5" viewBox="0 0 24 24">
-                  <path fill="#f25022" d="M1 1h10v10H1z" />
-                  <path fill="#00a4ef" d="M13 1h10v10H13z" />
-                  <path fill="#7fba00" d="M1 13h10v10H1z" />
-                  <path fill="#ffb900" d="M13 13h10v10H13z" />
-                </svg>
-                <span>Microsoft</span>
-              </button>
             </div>
-          </div>
-
-          <div className="mt-6">
-            <button
-              type="button"
-              onClick={handleAdminLogin}
-              disabled={isSubmitting}
-              className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-gradient-to-r from-[#7C3AED] to-[#EC4899] text-white rounded-lg text-sm font-semibold hover:opacity-90 transition-opacity shadow-lg disabled:opacity-60 disabled:cursor-not-allowed"
-            >
-              <Lock className="w-5 h-5" />
-              <span>Acces Administrateur</span>
-            </button>
           </div>
 
           <div className="mt-6 text-center">
@@ -264,7 +224,7 @@ export default function Login() {
 
             <div className="space-y-4 mb-8">
               <FeatureCard
-                title="Analytics predictif"
+                title="Analyse predictive"
                 description="Anticipez vos couts avec l'intelligence artificielle"
               />
               <FeatureCard

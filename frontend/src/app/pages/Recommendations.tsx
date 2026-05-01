@@ -1,445 +1,575 @@
-import { useState } from "react";
-import { Check, Eye, Lightbulb, TrendingDown, X } from "lucide-react";
+import { useEffect, useState } from "react";
+import { Check, Eye, Lightbulb, Search, X } from "lucide-react";
+import { toast } from "sonner";
 
+import AIRecommendationBlock from "../components/AIRecommendationBlock";
+import DashboardSection from "../components/dashboard/DashboardSection";
+import AIRiskInsightCard from "../components/AIRiskInsightCard";
+import WidgetVisibilityManager from "../components/dashboard/WidgetVisibilityManager";
+import { useAuth } from "../context/AuthContext";
 import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "../components/ui/dialog";
+  ApiError,
+  customerChurnApi,
+  type ApiCustomerChurnFilters,
+  type ApiCustomerChurnRecommendationList,
+} from "../lib/api";
+import { buildRecommendationSummary, enrichRecommendation } from "../lib/churn-recommendations";
+import {
+  formatContractLabel,
+  formatCustomerFactorLabel,
+  formatCustomerRiskLabel,
+  formatInternetServiceLabel,
+  formatMadValue,
+  formatRiskProbability,
+  formatRiskScore,
+  formatTenure,
+  getCustomerRiskClasses,
+  getOperatorStyles,
+} from "../lib/customer-churn";
+import {
+  type DashboardWidgetDefinition,
+  useDashboardPreferences,
+} from "../hooks/useDashboardPreferences";
 
-type Recommendation = {
-  id: string;
-  line: string;
-  user: string;
-  action: string;
-  reason: string;
-  impact: string;
-  saving: string;
-  priority: "Élevée" | "Moyenne" | "Faible";
-  confidence: number;
-};
+const PAGE_SIZE = 5;
 
-const recommendations: Recommendation[] = [
+const recommendationWidgets: DashboardWidgetDefinition[] = [
   {
-    id: "R-001",
-    line: "+212 6 12 34 56 78",
-    user: "Hassan Alami",
-    action: "Passer du forfait Premium 50Go au forfait Business 100Go",
-    reason: "Dépassements récurrents de data (moyenne 78Go/mois)",
-    impact: "Élimination des frais de dépassement",
-    saving: "450 MAD",
-    priority: "Élevée",
-    confidence: 95,
+    id: "summary",
+    label: "Synthese decision IA",
+    description: "Bandeau executive avec economies, lignes impactees et decisions prises.",
+    defaultVisible: true,
   },
   {
-    id: "R-002",
-    line: "+212 6 67 89 01 23",
-    user: "Salma Chraibi",
-    action: "Activer une limite data à 45Go",
-    reason: "Consommation moyenne de 42Go avec pics à 52Go",
-    impact: "Contrôle des dépassements",
-    saving: "320 MAD",
-    priority: "Élevée",
-    confidence: 88,
+    id: "filters",
+    label: "Filtres recommandations",
+    description: "Recherche et filtres departement / risque.",
+    defaultVisible: true,
   },
   {
-    id: "R-003",
-    line: "+212 7 78 90 12 34",
-    user: "Karim Senhaji",
-    action: "Désactiver l'option roaming international",
-    reason: "Aucun déplacement professionnel prévu dans les 6 prochains mois",
-    impact: "Économie sur frais fixes",
-    saving: "280 MAD",
-    priority: "Moyenne",
-    confidence: 82,
-  },
-  {
-    id: "R-004",
-    line: "+212 7 34 56 78 90",
-    user: "Youssef Tazi",
-    action: "Réduire au forfait Standard 20Go",
-    reason: "Consommation moyenne de seulement 15Go/mois",
-    impact: "Optimisation du forfait",
-    saving: "200 MAD",
-    priority: "Moyenne",
-    confidence: 91,
-  },
-  {
-    id: "R-005",
-    line: "+212 6 89 01 23 45",
-    user: "Zineb El Fassi",
-    action: "Grouper avec forfait famille entreprise",
-    reason: "Possibilité de mutualisation avec 3 autres lignes",
-    impact: "Réduction groupe",
-    saving: "380 MAD",
-    priority: "Faible",
-    confidence: 75,
-  },
-  {
-    id: "R-006",
-    line: "+212 6 23 45 67 89",
-    user: "Fatima Benali",
-    action: "Activer alerte seuil à 80% du forfait",
-    reason: "Tendance à dépasser légèrement le forfait",
-    impact: "Prévention des dépassements",
-    saving: "150 MAD",
-    priority: "Faible",
-    confidence: 68,
+    id: "recommendations",
+    label: "Liste recommandations",
+    description: "Cartes IA paginees avec examen detaille.",
+    defaultVisible: true,
   },
 ];
 
-function parseSaving(saving: Recommendation["saving"]): number {
-  return Number.parseInt(saving.replace(" MAD", ""), 10);
-}
-
-function getPriorityBadgeClass(priority: Recommendation["priority"]): string {
-  if (priority === "Élevée") {
-    return "bg-red-50 text-[#DC2626]";
+function normalizeError(error: unknown, fallbackMessage: string): string {
+  if (error instanceof ApiError) {
+    return error.message;
   }
-
-  if (priority === "Moyenne") {
-    return "bg-orange-50 text-[#F59E0B]";
+  if (error instanceof Error) {
+    return error.message;
   }
-
-  return "bg-blue-50 text-[#2563EB]";
-}
-
-function getDecisionWindow(priority: Recommendation["priority"]): string {
-  if (priority === "Élevée") {
-    return "Sous 7 jours";
-  }
-
-  if (priority === "Moyenne") {
-    return "Ce mois-ci";
-  }
-
-  return "Lors de la prochaine revue";
-}
-
-function getReviewChecklist(recommendation: Recommendation): string[] {
-  const action = recommendation.action.toLowerCase();
-  const checks = [
-    "Vérifier l'historique des 6 derniers mois avant validation.",
-    "Confirmer l'impact métier avec l'utilisateur ou son manager.",
-  ];
-
-  if (action.includes("forfait")) {
-    checks.push("Comparer le forfait cible avec l'offre actuellement active.");
-  }
-
-  if (action.includes("roaming")) {
-    checks.push("Confirmer l'absence de déplacements internationaux à venir.");
-  }
-
-  if (action.includes("limite data")) {
-    checks.push("S'assurer que la limite proposée couvre les usages critiques.");
-  }
-
-  if (action.includes("alerte seuil")) {
-    checks.push("Définir le canal de notification le plus pertinent.");
-  }
-
-  return checks;
+  return fallbackMessage;
 }
 
 export default function Recommendations() {
-  const [selectedRecommendation, setSelectedRecommendation] = useState<Recommendation | null>(null);
+  const { token, user } = useAuth();
+  const dashboardPreferences = useDashboardPreferences("recommendations-ai", recommendationWidgets, user?.email);
 
-  const totalSavings = recommendations.reduce((sum, recommendation) => sum + parseSaving(recommendation.saving), 0);
-  const highPriority = recommendations.filter((recommendation) => recommendation.priority === "Élevée").length;
+  const [filters, setFilters] = useState<ApiCustomerChurnFilters | null>(null);
+  const [recommendations, setRecommendations] = useState<ApiCustomerChurnRecommendationList | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [selectedDepartment, setSelectedDepartment] = useState("all");
+  const [selectedRiskLevel, setSelectedRiskLevel] = useState("all");
+  const [offset, setOffset] = useState(0);
+  const [acceptedIds, setAcceptedIds] = useState<number[]>([]);
+  const [rejectedIds, setRejectedIds] = useState<number[]>([]);
+  const [selectedRecommendationId, setSelectedRecommendationId] = useState<number | null>(null);
+
+  useEffect(() => {
+    let isMounted = true;
+
+    async function loadFilters() {
+      if (!token) {
+        return;
+      }
+
+      try {
+        const response = await customerChurnApi.filters(token);
+        if (isMounted) {
+          setFilters(response);
+        }
+      } catch (error) {
+        if (isMounted) {
+          setErrorMessage(normalizeError(error, "Impossible de charger les filtres recommandations."));
+        }
+      }
+    }
+
+    void loadFilters();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [token]);
+
+  useEffect(() => {
+    setOffset(0);
+  }, [searchQuery, selectedDepartment, selectedRiskLevel]);
+
+  useEffect(() => {
+    let isMounted = true;
+
+    async function loadRecommendations() {
+      if (!token) {
+        if (isMounted) {
+          setRecommendations(null);
+          setIsLoading(false);
+        }
+        return;
+      }
+
+      setIsLoading(true);
+      setErrorMessage(null);
+
+      try {
+        const response = await customerChurnApi.recommendations(token, {
+          search: searchQuery.trim() || undefined,
+          department: selectedDepartment !== "all" ? selectedDepartment : undefined,
+          risk_level: selectedRiskLevel !== "all" ? selectedRiskLevel : undefined,
+          offset,
+          limit: PAGE_SIZE,
+        });
+
+        if (isMounted) {
+          setRecommendations(response);
+        }
+      } catch (error) {
+        if (isMounted) {
+          setRecommendations(null);
+          setErrorMessage(normalizeError(error, "Impossible de charger les recommandations IA."));
+        }
+      } finally {
+        if (isMounted) {
+          setIsLoading(false);
+        }
+      }
+    }
+
+    void loadRecommendations();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [token, offset, searchQuery, selectedDepartment, selectedRiskLevel]);
+
+  const summary = buildRecommendationSummary(recommendations?.items ?? []);
+  const enrichedRecommendations = (recommendations?.items ?? [])
+    .map((recommendation) => enrichRecommendation(recommendation, summary))
+    .sort((leftRecommendation, rightRecommendation) => {
+      if (leftRecommendation.priorityScore !== rightRecommendation.priorityScore) {
+        return rightRecommendation.priorityScore - leftRecommendation.priorityScore;
+      }
+      return rightRecommendation.simulatedFinancialGainMad - leftRecommendation.simulatedFinancialGainMad;
+    });
+
+  const selectedRecommendation =
+    enrichedRecommendations.find(
+      (recommendation) => recommendation.customer_row_id === selectedRecommendationId,
+    ) ?? null;
+
+  const totalSavingsMad = enrichedRecommendations.reduce(
+    (sum, recommendation) => sum + recommendation.simulatedFinancialGainMad,
+    0,
+  );
+  const totalImpactedLines = enrichedRecommendations.reduce(
+    (sum, recommendation) => sum + recommendation.simulatedImpactedLines,
+    0,
+  );
+  const currentPage = Math.floor((recommendations?.offset ?? 0) / PAGE_SIZE) + 1;
+  const totalPages = recommendations ? Math.max(1, Math.ceil(recommendations.total / PAGE_SIZE)) : 1;
+
+  function getDecisionStatus(customerRowId: number): string {
+    if (acceptedIds.includes(customerRowId)) {
+      return "Acceptee";
+    }
+    if (rejectedIds.includes(customerRowId)) {
+      return "Rejetee";
+    }
+    return "A examiner";
+  }
+
+  function getRecommendationLifecycleStatus(customerRowId: number): string {
+    if (acceptedIds.includes(customerRowId)) {
+      return "En cours";
+    }
+    if (rejectedIds.includes(customerRowId)) {
+      return "Traitee";
+    }
+    return "Non traitee";
+  }
+
+  function handleAccept(customerRowId: number, customerId: string) {
+    setAcceptedIds((previousIds) =>
+      previousIds.includes(customerRowId) ? previousIds : [...previousIds, customerRowId],
+    );
+    setRejectedIds((previousIds) =>
+      previousIds.filter((value) => value !== customerRowId),
+    );
+    toast.success("Recommandation acceptee", {
+      description: `${customerId} passe en action prioritaire.`,
+    });
+  }
+
+  function handleReject(customerRowId: number, customerId: string) {
+    setRejectedIds((previousIds) =>
+      previousIds.includes(customerRowId) ? previousIds : [...previousIds, customerRowId],
+    );
+    setAcceptedIds((previousIds) =>
+      previousIds.filter((value) => value !== customerRowId),
+    );
+    toast.success("Recommandation rejetee", {
+      description: `${customerId} sort de la file de traitement.`,
+    });
+  }
 
   return (
-    <>
-      <div className="space-y-6 p-6">
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="mb-2 text-2xl font-bold text-[#0F172A]">Recommandations d'optimisation</h1>
-            <p className="text-[#64748B]">Actions suggérées par l'intelligence artificielle</p>
-          </div>
-        </div>
-
-        <div className="grid grid-cols-1 gap-6 md:grid-cols-3">
-          <div className="rounded-xl bg-gradient-to-br from-[#16A34A] to-[#059669] p-6 text-white">
-            <div className="mb-2 flex items-center gap-2">
-              <TrendingDown className="h-6 w-6" />
-              <h3 className="text-lg font-semibold">Économies potentielles</h3>
+    <div className="space-y-6 p-6">
+      <DashboardSection isVisible={dashboardPreferences.isWidgetVisible("summary")}>
+      <div className="rounded-3xl bg-gradient-to-r from-[#0F172A] via-[#1E3A8A] to-[#06B6D4] p-6 text-white">
+        <div className="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
+          <div className="max-w-3xl">
+            <div className="inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/10 px-3 py-1 text-xs uppercase tracking-[0.18em] text-white/80">
+              <Lightbulb className="h-3.5 w-3.5" />
+              <span>Decision IA</span>
             </div>
-            <p className="mb-1 text-4xl font-bold">{totalSavings.toLocaleString()} MAD</p>
-            <p className="text-sm text-white/80">par mois</p>
-            <div className="mt-4 rounded-lg bg-white/20 p-3 backdrop-blur-sm">
-              <p className="text-sm">Soit {(totalSavings * 12).toLocaleString()} MAD / an</p>
-            </div>
-          </div>
-
-          <div className="rounded-xl border border-gray-200 bg-white p-6">
-            <div className="mb-2 flex items-center gap-2">
-              <Lightbulb className="h-6 w-6 text-[#F59E0B]" />
-              <h3 className="text-lg font-semibold text-[#0F172A]">Recommandations</h3>
-            </div>
-            <p className="mb-1 text-4xl font-bold text-[#0F172A]">{recommendations.length}</p>
-            <p className="mb-4 text-sm text-[#64748B]">actions proposées</p>
-            <div className="flex items-center gap-2">
-              <span className="inline-flex items-center rounded-full bg-red-50 px-2.5 py-1 text-xs font-medium text-[#DC2626]">
-                {highPriority} priorité élevée
-              </span>
-            </div>
-          </div>
-
-          <div className="rounded-xl border border-gray-200 bg-white p-6">
-            <div className="mb-2 flex items-center gap-2">
-              <Check className="h-6 w-6 text-[#2563EB]" />
-              <h3 className="text-lg font-semibold text-[#0F172A]">Lignes optimisables</h3>
-            </div>
-            <p className="mb-1 text-4xl font-bold text-[#0F172A]">{recommendations.length}</p>
-            <p className="mb-4 text-sm text-[#64748B]">sur 342 lignes</p>
-            <div className="h-2 overflow-hidden rounded-full bg-gray-200">
-              <div
-                className="h-full rounded-full bg-[#2563EB]"
-                style={{ width: `${(recommendations.length / 342) * 100}%` }}
-              />
-            </div>
-          </div>
-        </div>
-
-        <div className="space-y-4">
-          {recommendations.map((recommendation) => (
-            <div
-              key={recommendation.id}
-              className="rounded-xl border-2 border-gray-200 bg-white p-6 transition-all hover:border-[#2563EB]"
-            >
-              <div className="mb-4 flex items-start justify-between">
-                <div className="flex-1">
-                  <div className="mb-2 flex items-center gap-3">
-                    <span className="text-sm font-medium text-[#64748B]">{recommendation.id}</span>
-                    <span
-                      className={`inline-flex items-center rounded-full px-2.5 py-1 text-xs font-medium ${getPriorityBadgeClass(recommendation.priority)}`}
-                    >
-                      Priorité {recommendation.priority.toLowerCase()}
-                    </span>
-                    <div className="flex items-center gap-1.5 rounded-full bg-green-50 px-2.5 py-1">
-                      <div className="h-2 w-2 rounded-full bg-[#16A34A]" />
-                      <span className="text-xs font-medium text-[#16A34A]">
-                        Confiance {recommendation.confidence}%
-                      </span>
-                    </div>
-                  </div>
-                  <h3 className="mb-1 text-lg font-bold text-[#0F172A]">{recommendation.action}</h3>
-                  <div className="mb-3 flex items-center gap-2 text-sm text-[#64748B]">
-                    <span>{recommendation.line}</span>
-                    <span>•</span>
-                    <span>{recommendation.user}</span>
-                  </div>
-                </div>
-                <div className="text-right">
-                  <p className="mb-1 text-sm text-[#64748B]">Économie estimée</p>
-                  <p className="text-3xl font-bold text-[#16A34A]">{recommendation.saving}</p>
-                  <p className="text-xs text-[#64748B]">/mois</p>
-                </div>
-              </div>
-
-              <div className="mb-4 grid grid-cols-1 gap-4 md:grid-cols-2">
-                <div className="rounded-lg bg-[#F8FAFC] p-4">
-                  <p className="mb-1 text-xs font-semibold text-[#64748B]">Justification IA</p>
-                  <p className="text-sm text-[#0F172A]">{recommendation.reason}</p>
-                </div>
-                <div className="rounded-lg bg-[#F8FAFC] p-4">
-                  <p className="mb-1 text-xs font-semibold text-[#64748B]">Impact attendu</p>
-                  <p className="text-sm text-[#0F172A]">{recommendation.impact}</p>
-                </div>
-              </div>
-
-              <div className="flex flex-wrap gap-2">
-                <button
-                  type="button"
-                  className="flex items-center gap-2 rounded-lg bg-[#16A34A] px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-[#15803d]"
-                >
-                  <Check className="h-4 w-4" />
-                  <span>Accepter</span>
-                </button>
-                <button
-                  type="button"
-                  className="flex items-center gap-2 rounded-lg bg-[#DC2626] px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-[#b91c1c]"
-                >
-                  <X className="h-4 w-4" />
-                  <span>Rejeter</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setSelectedRecommendation(recommendation)}
-                  className="flex items-center gap-2 rounded-lg border border-gray-200 px-4 py-2 text-sm font-medium text-[#64748B] transition-colors hover:border-[#2563EB] hover:bg-[#F8FAFC] hover:text-[#2563EB]"
-                >
-                  <Eye className="h-4 w-4" />
-                  <span>Examiner</span>
-                </button>
-              </div>
-            </div>
-          ))}
-        </div>
-
-        <div className="rounded-xl bg-gradient-to-br from-[#7C3AED] to-[#2D6CDF] p-6 text-white">
-          <div className="mb-4 flex items-center gap-2">
-            <Lightbulb className="h-6 w-6" />
-            <h2 className="text-xl font-bold">Analyse IA globale</h2>
-          </div>
-          <div className="space-y-3">
-            <p className="text-white/90">
-              En appliquant l'ensemble de ces recommandations, vous pourriez économiser{" "}
-              <span className="font-bold">{totalSavings.toLocaleString()} MAD par mois</span>, soit{" "}
-              <span className="font-bold">{(totalSavings * 12).toLocaleString()} MAD par an</span>.
+            <h1 className="mt-4 text-3xl font-bold">Recommandations d'optimisation</h1>
+            <p className="mt-3 text-sm leading-6 text-white/80">
+              Priorisation des actions a accepter, rejeter ou examiner pour reduire le risque et
+              proteger le revenu.
             </p>
-            <p className="text-white/90">
-              Les recommandations prioritaires concernent principalement les dépassements de forfait et les
-              options inutilisées. L'application de ces 2 actions prioritaires permettrait d'économiser{" "}
-              <span className="font-bold">770 MAD/mois</span> à elle seule.
-            </p>
-            <p className="text-white/90">
-              Notre système a analysé 6 mois d'historique de consommation pour générer ces recommandations
-              avec un niveau de confiance moyen de <span className="font-bold">83%</span>.
-            </p>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+            <div className="rounded-2xl border border-white/15 bg-white/10 p-4">
+              <p className="text-xs uppercase tracking-[0.18em] text-white/70">Cartes</p>
+              <p className="mt-2 text-3xl font-bold">{isLoading ? "--" : enrichedRecommendations.length}</p>
+            </div>
+            <div className="rounded-2xl border border-white/15 bg-white/10 p-4">
+              <p className="text-xs uppercase tracking-[0.18em] text-white/70">Economie</p>
+              <p className="mt-2 text-2xl font-bold">{isLoading ? "--" : formatMadValue(totalSavingsMad)}</p>
+            </div>
+            <div className="rounded-2xl border border-white/15 bg-white/10 p-4">
+              <p className="text-xs uppercase tracking-[0.18em] text-white/70">Lignes</p>
+              <p className="mt-2 text-3xl font-bold">{isLoading ? "--" : totalImpactedLines}</p>
+            </div>
+            <div className="rounded-2xl border border-white/15 bg-white/10 p-4">
+              <p className="text-xs uppercase tracking-[0.18em] text-white/70">Acceptees</p>
+              <p className="mt-2 text-3xl font-bold">{acceptedIds.length}</p>
+            </div>
           </div>
         </div>
       </div>
+      </DashboardSection>
 
-      <Dialog
-        open={selectedRecommendation !== null}
-        onOpenChange={(nextOpen) => {
-          if (!nextOpen) {
-            setSelectedRecommendation(null);
-          }
-        }}
-      >
-        <DialogContent className="max-h-[90vh] overflow-y-auto border border-gray-200 bg-white sm:max-w-3xl">
-          {selectedRecommendation ? (
-            <>
-              <DialogHeader className="pr-8">
-                <div className="flex flex-wrap items-center gap-3">
-                  <span className="text-sm font-medium text-[#64748B]">{selectedRecommendation.id}</span>
-                  <span
-                    className={`inline-flex items-center rounded-full px-2.5 py-1 text-xs font-medium ${getPriorityBadgeClass(selectedRecommendation.priority)}`}
-                  >
-                    Priorité {selectedRecommendation.priority.toLowerCase()}
-                  </span>
-                  <span className="inline-flex items-center rounded-full bg-green-50 px-2.5 py-1 text-xs font-medium text-[#16A34A]">
-                    Confiance {selectedRecommendation.confidence}%
-                  </span>
-                </div>
-                <DialogTitle className="text-2xl font-bold text-[#0F172A]">
-                  Examiner la recommandation
-                </DialogTitle>
-                <DialogDescription className="text-sm text-[#64748B]">
-                  Analyse détaillée avant validation ou rejet de l'action suggérée.
-                </DialogDescription>
-              </DialogHeader>
+      {errorMessage ? (
+        <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-600">
+          {errorMessage}
+        </div>
+      ) : null}
 
-              <div className="space-y-6">
-                <div className="rounded-2xl border border-blue-100 bg-gradient-to-br from-[#EFF6FF] via-white to-[#F8FAFC] p-5">
-                  <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
-                    <div className="max-w-2xl">
-                      <p className="text-sm font-medium text-[#2D6CDF]">Action recommandée</p>
-                      <h3 className="mt-2 text-xl font-bold text-[#0F172A]">
-                        {selectedRecommendation.action}
-                      </h3>
-                      <p className="mt-3 text-sm text-[#64748B]">
-                        Ligne {selectedRecommendation.line} • {selectedRecommendation.user}
-                      </p>
-                    </div>
+      <WidgetVisibilityManager
+        widgets={recommendationWidgets}
+        visibility={dashboardPreferences.visibility}
+        visibleCount={dashboardPreferences.visibleCount}
+        onChange={dashboardPreferences.setWidgetVisible}
+        onReset={dashboardPreferences.resetVisibility}
+      />
 
-                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                      <div className="rounded-xl bg-white p-4 shadow-sm ring-1 ring-blue-100">
-                        <p className="text-xs font-medium uppercase tracking-wide text-[#64748B]">
-                          Gain mensuel
+      <DashboardSection isVisible={dashboardPreferences.isWidgetVisible("filters")}>
+      <div className="rounded-2xl border border-gray-200 bg-white p-4">
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-4">
+          <div className="relative md:col-span-2">
+            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#64748B]" />
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={(event) => setSearchQuery(event.target.value)}
+              placeholder="Client, recommandation, justification..."
+              className="w-full rounded-xl border border-gray-200 bg-[#F8FAFC] py-2.5 pl-10 pr-4 text-sm focus:border-transparent focus:outline-none focus:ring-2 focus:ring-[#2D6CDF]"
+            />
+          </div>
+
+          <select
+            value={selectedDepartment}
+            onChange={(event) => setSelectedDepartment(event.target.value)}
+            className="rounded-xl border border-gray-200 bg-[#F8FAFC] px-4 py-2.5 text-sm focus:border-transparent focus:outline-none focus:ring-2 focus:ring-[#2D6CDF]"
+          >
+            <option value="all">Tous les departements</option>
+            {(filters?.departments ?? []).map((department) => (
+              <option key={department} value={department}>
+                {department}
+              </option>
+            ))}
+          </select>
+
+          <select
+            value={selectedRiskLevel}
+            onChange={(event) => setSelectedRiskLevel(event.target.value)}
+            className="rounded-xl border border-gray-200 bg-[#F8FAFC] px-4 py-2.5 text-sm focus:border-transparent focus:outline-none focus:ring-2 focus:ring-[#2D6CDF]"
+          >
+            <option value="all">Tous les risques</option>
+            {(filters?.risk_levels ?? []).map((riskLevel) => (
+              <option key={riskLevel} value={riskLevel}>
+                {formatCustomerRiskLabel(riskLevel)}
+              </option>
+            ))}
+          </select>
+        </div>
+      </div>
+      </DashboardSection>
+
+      <DashboardSection isVisible={dashboardPreferences.isWidgetVisible("recommendations")}>
+      {isLoading ? (
+        <div className="rounded-2xl border border-gray-200 bg-white px-6 py-16 text-center text-sm text-[#64748B]">
+          Chargement des recommandations IA...
+        </div>
+      ) : enrichedRecommendations.length === 0 ? (
+        <div className="rounded-2xl border border-dashed border-gray-300 bg-white px-6 py-16 text-center text-sm text-[#64748B]">
+          Aucune recommandation disponible pour les filtres actuels.
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 gap-5 2xl:grid-cols-[minmax(0,1fr)_360px]">
+          <div className="space-y-5">
+            {enrichedRecommendations.map((recommendation) => {
+              const operatorStyles = getOperatorStyles(recommendation.operator);
+
+              return (
+                <article
+                  key={recommendation.customer_row_id}
+                  className="rounded-3xl border border-gray-200 bg-white p-5 shadow-sm"
+                >
+                  <div className="flex flex-col gap-4">
+                    <div className="flex flex-col gap-3 xl:flex-row xl:items-start xl:justify-between">
+                      <div>
+                        <div className="flex flex-wrap items-center gap-2">
+                          <h2 className="text-xl font-semibold text-[#0F172A]">
+                            {recommendation.customer_id}
+                          </h2>
+                          <span
+                            className={`inline-flex items-center rounded-full px-2.5 py-1 text-xs font-medium ${getCustomerRiskClasses(recommendation.risk_level)}`}
+                          >
+                            {formatCustomerRiskLabel(recommendation.risk_level)}
+                          </span>
+                          <span className="rounded-full border border-blue-200 bg-blue-50 px-2.5 py-1 text-xs font-medium text-[#1D4ED8]">
+                            {recommendation.recommendationKindLabel}
+                          </span>
+                          <span className="rounded-full border border-gray-200 bg-gray-50 px-2.5 py-1 text-xs font-medium text-[#475569]">
+                            {getDecisionStatus(recommendation.customer_row_id)}
+                          </span>
+                        </div>
+
+                        <p className="mt-2 text-sm text-[#64748B]">
+                          {recommendation.department} - {formatContractLabel(recommendation.contract)} -{" "}
+                          {formatTenure(recommendation.tenure)}
                         </p>
-                        <p className="mt-2 text-lg font-bold text-[#16A34A]">
-                          {selectedRecommendation.saving}
+                        <p className="mt-1 text-sm text-[#64748B]">
+                          {formatInternetServiceLabel(recommendation.internet_service)}
                         </p>
                       </div>
-                      <div className="rounded-xl bg-white p-4 shadow-sm ring-1 ring-blue-100">
-                        <p className="text-xs font-medium uppercase tracking-wide text-[#64748B]">
-                          Gain annuel
+
+                      <span
+                        className="inline-flex items-center rounded-full px-3 py-1 text-xs font-medium"
+                        style={operatorStyles}
+                      >
+                        {recommendation.operator}
+                      </span>
+                    </div>
+
+                    <AIRiskInsightCard
+                      riskId={recommendation.risk_id}
+                      moduleLabel="Recommandations"
+                      title={recommendation.title}
+                      severity={recommendation.risk_level}
+                      description={recommendation.recommendation_reason}
+                      impact={recommendation.impact}
+                      cause={recommendation.quickSummary}
+                      aiRecommendation={recommendation.ai_recommendation}
+                      suggestedAction={recommendation.suggested_action}
+                      confidenceScore={recommendation.confidence_score}
+                      recommendationStatus={getRecommendationLifecycleStatus(recommendation.customer_row_id)}
+                      compact
+                      onApply={() => handleAccept(recommendation.customer_row_id, recommendation.customer_id)}
+                      onIgnore={() => handleReject(recommendation.customer_row_id, recommendation.customer_id)}
+                      onSimulate={() => setSelectedRecommendationId(recommendation.customer_row_id)}
+                    />
+
+                    <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">
+                      <div className="rounded-2xl border border-gray-200 p-4">
+                        <p className="text-xs uppercase tracking-[0.18em] text-[#64748B]">Score</p>
+                        <p className="mt-2 text-xl font-semibold text-[#0F172A]">
+                          {formatRiskScore(recommendation.risk_score_100)}
                         </p>
-                        <p className="mt-2 text-lg font-bold text-[#0F172A]">
-                          {(parseSaving(selectedRecommendation.saving) * 12).toLocaleString()} MAD
+                      </div>
+                      <div className="rounded-2xl border border-gray-200 p-4">
+                        <p className="text-xs uppercase tracking-[0.18em] text-[#64748B]">Probabilite</p>
+                        <p className="mt-2 text-xl font-semibold text-[#0F172A]">
+                          {formatRiskProbability(recommendation.risk_proba)}
+                        </p>
+                      </div>
+                      <div className="rounded-2xl border border-gray-200 p-4">
+                        <p className="text-xs uppercase tracking-[0.18em] text-[#64748B]">Economie</p>
+                        <p className="mt-2 text-xl font-semibold text-[#16A34A]">
+                          {formatMadValue(recommendation.simulatedFinancialGainMad)}
+                        </p>
+                      </div>
+                      <div className="rounded-2xl border border-gray-200 p-4">
+                        <p className="text-xs uppercase tracking-[0.18em] text-[#64748B]">Impact</p>
+                        <p className="mt-2 text-xl font-semibold text-[#0F172A]">
+                          {recommendation.simulatedImpactedLines} lignes
                         </p>
                       </div>
                     </div>
-                  </div>
-                </div>
 
-                <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
-                  <div className="rounded-xl border border-gray-200 bg-[#F8FAFC] p-4">
-                    <p className="text-xs font-medium uppercase tracking-wide text-[#64748B]">Priorité</p>
-                    <p className="mt-2 text-sm font-semibold text-[#0F172A]">
-                      {selectedRecommendation.priority}
-                    </p>
-                  </div>
-                  <div className="rounded-xl border border-gray-200 bg-[#F8FAFC] p-4">
-                    <p className="text-xs font-medium uppercase tracking-wide text-[#64748B]">
-                      Fenêtre d'action
-                    </p>
-                    <p className="mt-2 text-sm font-semibold text-[#0F172A]">
-                      {getDecisionWindow(selectedRecommendation.priority)}
-                    </p>
-                  </div>
-                  <div className="rounded-xl border border-gray-200 bg-[#F8FAFC] p-4">
-                    <p className="text-xs font-medium uppercase tracking-wide text-[#64748B]">
-                      Niveau de confiance
-                    </p>
-                    <p className="mt-2 text-sm font-semibold text-[#0F172A]">
-                      {selectedRecommendation.confidence}%
-                    </p>
-                  </div>
-                </div>
+                    <div className="flex flex-wrap gap-2">
+                      {recommendation.key_factors.map((factor) => (
+                        <span
+                          key={factor}
+                          className="rounded-full border border-gray-200 bg-white px-3 py-1 text-xs font-medium text-[#475569]"
+                        >
+                          {formatCustomerFactorLabel(factor)}
+                        </span>
+                      ))}
+                    </div>
 
-                <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                  <div className="rounded-xl border border-gray-200 bg-white p-5">
-                    <p className="text-xs font-medium uppercase tracking-wide text-[#64748B]">
-                      Justification IA
-                    </p>
-                    <p className="mt-3 text-sm leading-6 text-[#0F172A]">
-                      {selectedRecommendation.reason}
-                    </p>
+                    <div className="flex flex-col gap-3 sm:flex-row">
+                      <button
+                        type="button"
+                        onClick={() =>
+                          handleAccept(recommendation.customer_row_id, recommendation.customer_id)
+                        }
+                        className="inline-flex items-center justify-center gap-2 rounded-2xl bg-[#16A34A] px-4 py-3 font-medium text-white transition-colors hover:bg-[#15803D]"
+                      >
+                        <Check className="h-4 w-4" />
+                        <span>Accepter</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          handleReject(recommendation.customer_row_id, recommendation.customer_id)
+                        }
+                        className="inline-flex items-center justify-center gap-2 rounded-2xl bg-[#DC2626] px-4 py-3 font-medium text-white transition-colors hover:bg-[#B91C1C]"
+                      >
+                        <X className="h-4 w-4" />
+                        <span>Rejeter</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setSelectedRecommendationId(recommendation.customer_row_id)}
+                        className="inline-flex items-center justify-center gap-2 rounded-2xl border border-gray-200 bg-white px-4 py-3 font-medium text-[#475569] transition-colors hover:bg-[#F8FAFC]"
+                      >
+                        <Eye className="h-4 w-4" />
+                        <span>Examiner</span>
+                      </button>
+                    </div>
                   </div>
-                  <div className="rounded-xl border border-gray-200 bg-white p-5">
-                    <p className="text-xs font-medium uppercase tracking-wide text-[#64748B]">
-                      Impact attendu
-                    </p>
-                    <p className="mt-3 text-sm leading-6 text-[#0F172A]">
-                      {selectedRecommendation.impact}
-                    </p>
-                  </div>
-                </div>
+                </article>
+              );
+            })}
+          </div>
 
-                <div className="rounded-xl border border-gray-200 bg-[#F8FAFC] p-5">
-                  <p className="text-xs font-medium uppercase tracking-wide text-[#64748B]">
-                    Points de contrôle avant décision
+          <aside className="h-fit rounded-3xl border border-gray-200 bg-white p-5 shadow-sm">
+            {selectedRecommendation ? (
+              <div className="space-y-5">
+                <div>
+                  <p className="text-xs uppercase tracking-[0.18em] text-[#64748B]">Examen detaille</p>
+                  <h2 className="mt-2 text-2xl font-semibold text-[#0F172A]">
+                    {selectedRecommendation.customer_id}
+                  </h2>
+                  <p className="mt-2 text-sm text-[#64748B]">
+                    {selectedRecommendation.department} -{" "}
+                    {formatContractLabel(selectedRecommendation.contract)}
                   </p>
-                  <ul className="mt-3 space-y-3">
-                    {getReviewChecklist(selectedRecommendation).map((item) => (
-                      <li key={item} className="flex items-start gap-3 text-sm text-[#0F172A]">
-                        <span className="mt-2 h-2 w-2 shrink-0 rounded-full bg-[#2563EB]" />
-                        <span>{item}</span>
-                      </li>
-                    ))}
-                  </ul>
                 </div>
-              </div>
 
-              <DialogFooter className="mt-6 gap-3">
+                <AIRecommendationBlock
+                  recommendation={selectedRecommendation.recommendation}
+                  secondaryText={selectedRecommendation.quickSummary}
+                  status={getRecommendationLifecycleStatus(selectedRecommendation.customer_row_id)}
+                  severityLabel={formatCustomerRiskLabel(selectedRecommendation.risk_level)}
+                  riskTypeLabel={selectedRecommendation.recommendationKindLabel}
+                  scoreLabel={`Score ${formatRiskScore(selectedRecommendation.risk_score_100)}`}
+                  className="bg-[#F8FAFC]"
+                />
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="rounded-2xl border border-gray-200 p-4">
+                    <p className="text-xs uppercase tracking-[0.18em] text-[#64748B]">Mensuel</p>
+                    <p className="mt-2 text-lg font-semibold text-[#0F172A]">
+                      {formatMadValue(selectedRecommendation.monthly_cost_mad)}
+                    </p>
+                  </div>
+                  <div className="rounded-2xl border border-gray-200 p-4">
+                    <p className="text-xs uppercase tracking-[0.18em] text-[#64748B]">Risque</p>
+                    <p className="mt-2 text-lg font-semibold text-[#0F172A]">
+                      {formatMadValue(selectedRecommendation.revenue_at_risk_mad)}
+                    </p>
+                  </div>
+                </div>
+
+                <div className="rounded-2xl border border-gray-200 p-4">
+                  <p className="text-xs uppercase tracking-[0.18em] text-[#64748B]">Justification IA</p>
+                  <p className="mt-3 text-sm leading-6 text-[#475569]">
+                    {selectedRecommendation.recommendation_reason}
+                  </p>
+                </div>
+
+                <div className="rounded-2xl border border-gray-200 p-4">
+                  <p className="text-xs uppercase tracking-[0.18em] text-[#64748B]">Pourquoi cette action</p>
+                  <div className="mt-3 space-y-2">
+                    {selectedRecommendation.whyRecommendation.map((reason) => (
+                      <div key={reason} className="rounded-xl bg-[#F8FAFC] px-3 py-2 text-sm text-[#475569]">
+                        {reason}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
                 <button
                   type="button"
-                  onClick={() => setSelectedRecommendation(null)}
-                  className="rounded-lg border border-gray-200 px-4 py-2.5 font-medium text-[#64748B] transition-colors hover:bg-[#F8FAFC]"
+                  onClick={() => setSelectedRecommendationId(null)}
+                  className="w-full rounded-2xl border border-gray-200 px-4 py-3 font-medium text-[#64748B] transition-colors hover:bg-[#F8FAFC]"
                 >
-                  Fermer
+                  Fermer l'examen
                 </button>
-              </DialogFooter>
-            </>
-          ) : null}
-        </DialogContent>
-      </Dialog>
-    </>
+              </div>
+            ) : (
+              <div className="py-10 text-center text-sm text-[#64748B]">
+                Selectionnez une recommandation pour examiner sa justification et son impact.
+              </div>
+            )}
+          </aside>
+        </div>
+      )}
+
+      <div className="flex flex-col gap-3 rounded-2xl border border-gray-200 bg-white px-5 py-4 md:flex-row md:items-center md:justify-between">
+        <p className="text-sm text-[#64748B]">
+          Page {currentPage} / {totalPages} - {recommendations?.total ?? 0} recommandations
+        </p>
+        <div className="flex items-center gap-3">
+          <button
+            type="button"
+            onClick={() => setOffset((previousOffset) => Math.max(previousOffset - PAGE_SIZE, 0))}
+            disabled={offset === 0 || isLoading}
+            className="rounded-xl border border-gray-200 px-4 py-2 text-sm font-medium text-[#64748B] transition-colors hover:bg-[#F8FAFC] disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            Precedent
+          </button>
+          <button
+            type="button"
+            onClick={() => setOffset((previousOffset) => previousOffset + PAGE_SIZE)}
+            disabled={isLoading || !recommendations || offset + PAGE_SIZE >= recommendations.total}
+            className="rounded-xl border border-gray-200 px-4 py-2 text-sm font-medium text-[#64748B] transition-colors hover:bg-[#F8FAFC] disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            Suivant
+          </button>
+        </div>
+      </div>
+      </DashboardSection>
+    </div>
   );
 }

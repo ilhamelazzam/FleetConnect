@@ -1,12 +1,15 @@
 from functools import lru_cache
+from pathlib import Path
 
 from pydantic import Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+BACKEND_DIR = Path(__file__).resolve().parents[2]
+
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
-        env_file=".env",
+        env_file=BACKEND_DIR / ".env",
         env_file_encoding="utf-8",
         extra="ignore",
         enable_decoding=False,
@@ -28,6 +31,10 @@ class Settings(BaseSettings):
     db_port: int = 5432
     db_schema: str = "public"
     database_url: str | None = None
+    cdr_analytics_csv_path: str | None = None
+    mobile_fleet_csv_path: str | None = None
+    customer_churn_input_csv_path: str | None = None
+    customer_churn_output_csv_path: str | None = None
 
     secret_key: str = "change-me-before-production"
     refresh_secret_key: str | None = None

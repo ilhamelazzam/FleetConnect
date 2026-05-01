@@ -1,6 +1,7 @@
 import { Navigate, Outlet, useLocation } from "react-router";
 
 import { useAuth } from "../context/AuthContext";
+import { canAccessAdminCenter } from "../lib/roles";
 
 function AuthLoadingScreen() {
   return (
@@ -51,8 +52,8 @@ export function RequireAdmin() {
     return <Navigate to="/login" replace state={{ from: location }} />;
   }
 
-  if (user?.role.trim().toLowerCase() !== "admin") {
-    return <Navigate to="/dashboard" replace />;
+  if (!canAccessAdminCenter(user)) {
+    return <Navigate to="/acces-refuse" replace state={{ from: location }} />;
   }
 
   return <Outlet />;

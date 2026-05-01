@@ -44,6 +44,31 @@ const defaultFormData: PlanFormData = {
   description: "",
 };
 
+const smsQuotaOptions = [
+  "Illimite",
+  "500 SMS",
+  "1000 SMS",
+  "2000 SMS",
+  "5000 SMS",
+];
+
+const roamingZoneOptions = [
+  "Aucun",
+  "Maghreb",
+  "International",
+  "Monde",
+];
+
+function withCurrentValue(options: string[], currentValue: string): string[] {
+  const normalizedValue = currentValue.trim();
+
+  if (!normalizedValue || options.includes(normalizedValue)) {
+    return options;
+  }
+
+  return [normalizedValue, ...options];
+}
+
 export default function PlanFormModal({
   open,
   mode,
@@ -54,6 +79,8 @@ export default function PlanFormModal({
   onSubmit,
 }: PlanFormModalProps) {
   const [formData, setFormData] = useState<PlanFormData>(defaultFormData);
+  const availableSmsQuotaOptions = withCurrentValue(smsQuotaOptions, formData.sms_quota);
+  const availableRoamingZoneOptions = withCurrentValue(roamingZoneOptions, formData.roaming_zone);
 
   useEffect(() => {
     if (!open) {
@@ -208,8 +235,7 @@ export default function PlanFormModal({
                 <span className="block text-sm font-medium text-[#0F172A]">SMS</span>
                 <div className="relative">
                   <MessageSquareText className="pointer-events-none absolute left-3 top-1/2 h-5 w-5 -translate-y-1/2 text-[#64748B]" />
-                  <input
-                    type="text"
+                  <select
                     value={formData.sms_quota}
                     onChange={(event) =>
                       setFormData((previous) => ({
@@ -217,10 +243,18 @@ export default function PlanFormModal({
                         sms_quota: event.target.value,
                       }))
                     }
-                    placeholder="Illimite"
                     className="w-full rounded-lg border border-gray-200 bg-[#F8FAFC] py-3 pr-4 pl-11 text-sm focus:border-transparent focus:outline-none focus:ring-2 focus:ring-[#2D6CDF]"
                     required
-                  />
+                  >
+                    <option value="" disabled>
+                      Choisir un quota SMS
+                    </option>
+                    {availableSmsQuotaOptions.map((option) => (
+                      <option key={option} value={option}>
+                        {option}
+                      </option>
+                    ))}
+                  </select>
                 </div>
               </label>
 
@@ -228,8 +262,7 @@ export default function PlanFormModal({
                 <span className="block text-sm font-medium text-[#0F172A]">Roaming</span>
                 <div className="relative">
                   <Globe className="pointer-events-none absolute left-3 top-1/2 h-5 w-5 -translate-y-1/2 text-[#64748B]" />
-                  <input
-                    type="text"
+                  <select
                     value={formData.roaming_zone}
                     onChange={(event) =>
                       setFormData((previous) => ({
@@ -237,10 +270,18 @@ export default function PlanFormModal({
                         roaming_zone: event.target.value,
                       }))
                     }
-                    placeholder="International"
                     className="w-full rounded-lg border border-gray-200 bg-[#F8FAFC] py-3 pr-4 pl-11 text-sm focus:border-transparent focus:outline-none focus:ring-2 focus:ring-[#2D6CDF]"
                     required
-                  />
+                  >
+                    <option value="" disabled>
+                      Choisir une zone roaming
+                    </option>
+                    {availableRoamingZoneOptions.map((option) => (
+                      <option key={option} value={option}>
+                        {option}
+                      </option>
+                    ))}
+                  </select>
                 </div>
               </label>
 

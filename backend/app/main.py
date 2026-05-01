@@ -8,8 +8,9 @@ from app.core.config import get_settings
 from app.core.exceptions import register_exception_handlers
 from app.core.logging import configure_logging
 from app.core.middleware import configure_middlewares
-from app.db.session import init_db
+from app.db.session import ensure_plan_activation_schema_compatibility, init_db
 from app.services.auth_service import ensure_default_admin
+from app.services.fleet_access_service import ensure_default_fleet_access_data
 from app.services.plan_service import ensure_default_plans
 
 
@@ -19,11 +20,14 @@ def create_application() -> FastAPI:
 
     @asynccontextmanager
     async def lifespan(_: FastAPI):
-        if settings.auto_create_tables:
-            init_db()
         try:
+            if settings.auto_create_tables:
+                init_db()
+            if settings.is_development and not settings.is_sqlite:
+                ensure_plan_activation_schema_compatibility()
             ensure_default_admin()
             ensure_default_plans()
+            ensure_default_fleet_access_data()
         except OperationalError as exc:
             raise RuntimeError(
                 "Database is not ready. Apply migrations with `alembic upgrade head`."

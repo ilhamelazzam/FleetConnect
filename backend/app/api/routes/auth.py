@@ -4,6 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from fastapi.security import OAuth2PasswordRequestForm
 from fastapi.responses import RedirectResponse
 
+from app.core.roles import ADMIN_ROLE, PUBLIC_REGISTRATION_ROLES
 from app.core.dependencies import CurrentActiveUser, DbSession
 from app.core.rate_limit import auth_rate_limit
 from app.schemas.auth import (
@@ -11,6 +12,8 @@ from app.schemas.auth import (
     ForgotPasswordResponse,
     LoginRequest,
     MessageResponse,
+    OAuthProviderStatus,
+    OAuthProvidersResponse,
     RefreshTokenRequest,
     RegisterRequest,
     ResetPasswordRequest,
@@ -27,6 +30,7 @@ from app.services.oauth_service import (
     complete_oauth_login,
     get_oauth_error_redirect_url,
     get_oauth_login_redirect_url,
+    is_oauth_provider_configured,
 )
 from app.services.password_reset_service import (
     request_password_reset,
@@ -82,12 +86,24 @@ def register(
             detail="A user with this email already exists",
         )
 
+    if payload.role not in PUBLIC_REGISTRATION_ROLES:
+        detail = (
+            "Administrator role can only be assigned by an existing administrator"
+            if payload.role == ADMIN_ROLE
+            else "This role cannot be assigned through public registration"
+        )
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=detail,
+        )
+
     user = create_user(
         db,
         UserCreate(
             full_name=payload.full_name.strip(),
             email=payload.email,
             password=payload.password,
+            photo_url=payload.photo_url,
             role=payload.role,
             is_active=True,
         ),
@@ -132,6 +148,15 @@ def reset_user_password(
 ) -> MessageResponse:
     apply_no_store_headers(response)
     return reset_password(db, payload.reset_token, payload.code, payload.new_password)
+
+
+@router.get("/oauth/providers", response_model=OAuthProvidersResponse)
+def read_oauth_providers(response: Response) -> OAuthProvidersResponse:
+    apply_no_store_headers(response)
+    return OAuthProvidersResponse(
+        google=OAuthProviderStatus(configured=is_oauth_provider_configured(GOOGLE_PROVIDER)),
+        microsoft=OAuthProviderStatus(configured=is_oauth_provider_configured(MICROSOFT_PROVIDER)),
+    )
 
 
 @router.get("/google/login", include_in_schema=False)

@@ -1,27 +1,63 @@
-import { useState } from "react";
+import { useState, type ChangeEvent } from "react";
 import { Link, useNavigate } from "react-router";
-import { Building2, Eye, EyeOff, Lock, Mail, MapPin, User } from "lucide-react";
+import {
+  Building2,
+  Eye,
+  EyeOff,
+  ImagePlus,
+  Lock,
+  Mail,
+  MapPin,
+  Trash2,
+  User,
+} from "lucide-react";
 
 import { useAuth } from "../context/AuthContext";
-import { ApiError, oauthApi } from "../lib/api";
+import { useOAuthProviders } from "../hooks/useOAuthProviders";
+import { ApiError, getUserAvatarUrl, oauthApi } from "../lib/api";
 import logoImage from "../../assets/2285601bb4e4d491e253f51df33e674aefdb2011.png";
+
+const MAX_USER_PHOTO_SIZE_BYTES = 512 * 1024;
+
+function readFileAsDataUrl(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+
+    reader.onload = () => {
+      if (typeof reader.result === "string") {
+        resolve(reader.result);
+        return;
+      }
+
+      reject(new Error("Impossible de lire l'image selectionnee."));
+    };
+
+    reader.onerror = () => reject(new Error("Impossible de lire l'image selectionnee."));
+    reader.readAsDataURL(file);
+  });
+}
 
 export default function Register() {
   const navigate = useNavigate();
   const { register } = useAuth();
+  const { isLoading, isGoogleConfigured } = useOAuthProviders();
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
+  const [photoInputKey, setPhotoInputKey] = useState(0);
   const [formData, setFormData] = useState({
     fullName: "",
     email: "",
-    company: "",
+    department: "",
     country: "Maroc",
-    role: "manager",
+    role: "user",
     password: "",
     confirmPassword: "",
+    photoUrl: null as string | null,
   });
+
+  const avatarPreviewUrl = getUserAvatarUrl(formData.fullName || "Utilisateur", formData.photoUrl);
 
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
@@ -39,6 +75,7 @@ export default function Register() {
         fullName: formData.fullName,
         email: formData.email,
         password: formData.password,
+        photoUrl: formData.photoUrl,
         role: formData.role,
         remember: true,
       });
@@ -55,35 +92,114 @@ export default function Register() {
   };
 
   const handleGoogleSignup = () => {
+    if (isLoading || !isGoogleConfigured) {
+      return;
+    }
     window.location.href = oauthApi.googleLoginUrl();
   };
 
-  const handleMicrosoftSignup = () => {
-    window.location.href = oauthApi.microsoftLoginUrl();
+  const oauthButtonClassName =
+    "flex items-center justify-center gap-2 rounded-lg border px-4 py-3 text-sm font-medium transition-colors disabled:cursor-not-allowed disabled:border-gray-200 disabled:bg-gray-50 disabled:text-[#94A3B8]";
+
+  const handlePhotoChange = async (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+
+    if (!file) {
+      return;
+    }
+
+    if (!file.type.startsWith("image/")) {
+      setErrorMessage("Selectionnez une image valide pour la photo utilisateur.");
+      setPhotoInputKey((previousValue) => previousValue + 1);
+      return;
+    }
+
+    if (file.size > MAX_USER_PHOTO_SIZE_BYTES) {
+      setErrorMessage("La photo doit faire 500 Ko maximum.");
+      setPhotoInputKey((previousValue) => previousValue + 1);
+      return;
+    }
+
+    try {
+      const photoUrl = await readFileAsDataUrl(file);
+      setFormData((current) => ({ ...current, photoUrl }));
+      setErrorMessage("");
+    } catch (error) {
+      if (error instanceof Error) {
+        setErrorMessage(error.message);
+      } else {
+        setErrorMessage("Impossible de charger la photo.");
+      }
+      setPhotoInputKey((previousValue) => previousValue + 1);
+    }
+  };
+
+  const handleRemovePhoto = () => {
+    setFormData((current) => ({ ...current, photoUrl: null }));
+    setPhotoInputKey((previousValue) => previousValue + 1);
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-[#F8FAFC] via-white to-[#F1F5F9] flex items-center justify-center p-4">
-      <div className="w-full max-w-6xl grid lg:grid-cols-2 gap-8 items-center">
-        <div className="bg-white rounded-2xl shadow-2xl border border-gray-100 p-8 lg:p-12">
+    <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-[#F8FAFC] via-white to-[#F1F5F9] p-4">
+      <div className="grid w-full max-w-6xl items-center gap-8 lg:grid-cols-2">
+        <div className="rounded-2xl border border-gray-100 bg-white p-8 shadow-2xl lg:p-12">
           <div className="mb-8">
-            <div className="flex items-center justify-center mb-8">
+            <div className="mb-8 flex items-center justify-center">
               <img src={logoImage} alt="BC SKILLS" className="h-24 w-auto" />
             </div>
 
-            <h2 className="text-3xl font-bold text-[#0F172A] mb-2 text-center">Créer un compte</h2>
-            <p className="text-[#64748B] text-center">
-              Commencez à optimiser votre flotte mobile
-            </p>
+            <h2 className="mb-2 text-center text-3xl font-bold text-[#0F172A]">Créer un compte</h2>
+            <p className="text-center text-[#64748B]">Commencez à optimiser votre flotte mobile</p>
           </div>
 
           <form onSubmit={handleSubmit} className="space-y-5">
             <div>
-              <label className="block text-sm font-medium text-[#0F172A] mb-2">
-                Nom complet
-              </label>
+              <label className="mb-2 block text-sm font-medium text-[#0F172A]">Photo utilisateur</label>
+              <div className="flex items-center gap-4 rounded-2xl border border-gray-200 bg-[#F8FAFC] p-4">
+                <img
+                  src={avatarPreviewUrl}
+                  alt="Apercu utilisateur"
+                  className="h-20 w-20 rounded-2xl border border-gray-200 object-cover shadow-sm"
+                />
+
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm font-medium text-[#0F172A]">Ajouter une image de profil</p>
+                  <p className="mt-1 text-xs text-[#64748B]">
+                    PNG, JPG, WEBP ou GIF. Taille maximale: 500 Ko.
+                  </p>
+
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    <label className="inline-flex cursor-pointer items-center gap-2 rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-sm font-medium text-[#2D6CDF] transition-colors hover:bg-blue-100">
+                      <ImagePlus className="h-4 w-4" />
+                      <span>{formData.photoUrl ? "Changer l'image" : "Choisir une image"}</span>
+                      <input
+                        key={photoInputKey}
+                        type="file"
+                        accept="image/png,image/jpeg,image/webp,image/gif"
+                        onChange={(event) => void handlePhotoChange(event)}
+                        className="hidden"
+                      />
+                    </label>
+
+                    {formData.photoUrl ? (
+                      <button
+                        type="button"
+                        onClick={handleRemovePhoto}
+                        className="inline-flex items-center gap-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm font-medium text-[#DC2626] transition-colors hover:bg-red-100"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                        <span>Supprimer</span>
+                      </button>
+                    ) : null}
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div>
+              <label className="mb-2 block text-sm font-medium text-[#0F172A]">Nom complet</label>
               <div className="relative">
-                <User className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-[#64748B]" />
+                <User className="absolute left-3 top-1/2 h-5 w-5 -translate-y-1/2 text-[#64748B]" />
                 <input
                   type="text"
                   value={formData.fullName}
@@ -91,18 +207,16 @@ export default function Register() {
                     setFormData((current) => ({ ...current, fullName: event.target.value }))
                   }
                   placeholder="Votre nom complet"
-                  className="w-full pl-11 pr-4 py-3 bg-[#F8FAFC] border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#2D6CDF] focus:border-transparent"
+                  className="w-full rounded-lg border border-gray-200 bg-[#F8FAFC] py-3 pl-11 pr-4 focus:border-transparent focus:outline-none focus:ring-2 focus:ring-[#2D6CDF]"
                   required
                 />
               </div>
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-[#0F172A] mb-2">
-                Email professionnel
-              </label>
+              <label className="mb-2 block text-sm font-medium text-[#0F172A]">Email professionnel</label>
               <div className="relative">
-                <Mail className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-[#64748B]" />
+                <Mail className="absolute left-3 top-1/2 h-5 w-5 -translate-y-1/2 text-[#64748B]" />
                 <input
                   type="email"
                   value={formData.email}
@@ -110,41 +224,39 @@ export default function Register() {
                     setFormData((current) => ({ ...current, email: event.target.value }))
                   }
                   placeholder="votre.email@entreprise.ma"
-                  className="w-full pl-11 pr-4 py-3 bg-[#F8FAFC] border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#2D6CDF] focus:border-transparent"
+                  className="w-full rounded-lg border border-gray-200 bg-[#F8FAFC] py-3 pl-11 pr-4 focus:border-transparent focus:outline-none focus:ring-2 focus:ring-[#2D6CDF]"
                   required
                 />
               </div>
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-[#0F172A] mb-2">
-                Entreprise
-              </label>
+              <label className="mb-2 block text-sm font-medium text-[#0F172A]">Departement</label>
               <div className="relative">
-                <Building2 className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-[#64748B]" />
+                <Building2 className="absolute left-3 top-1/2 h-5 w-5 -translate-y-1/2 text-[#64748B]" />
                 <input
                   type="text"
-                  value={formData.company}
+                  value={formData.department}
                   onChange={(event) =>
-                    setFormData((current) => ({ ...current, company: event.target.value }))
+                    setFormData((current) => ({ ...current, department: event.target.value }))
                   }
-                  placeholder="Nom de votre entreprise"
-                  className="w-full pl-11 pr-4 py-3 bg-[#F8FAFC] border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#2D6CDF] focus:border-transparent"
+                  placeholder="Nom de votre departement"
+                  className="w-full rounded-lg border border-gray-200 bg-[#F8FAFC] py-3 pl-11 pr-4 focus:border-transparent focus:outline-none focus:ring-2 focus:ring-[#2D6CDF]"
                   required
                 />
               </div>
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-[#0F172A] mb-2">Pays</label>
+              <label className="mb-2 block text-sm font-medium text-[#0F172A]">Pays</label>
               <div className="relative">
-                <MapPin className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-[#64748B]" />
+                <MapPin className="absolute left-3 top-1/2 h-5 w-5 -translate-y-1/2 text-[#64748B]" />
                 <select
                   value={formData.country}
                   onChange={(event) =>
                     setFormData((current) => ({ ...current, country: event.target.value }))
                   }
-                  className="w-full pl-11 pr-4 py-3 bg-[#F8FAFC] border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#2D6CDF] focus:border-transparent"
+                  className="w-full rounded-lg border border-gray-200 bg-[#F8FAFC] py-3 pl-11 pr-4 focus:border-transparent focus:outline-none focus:ring-2 focus:ring-[#2D6CDF]"
                 >
                   <option value="Maroc">Maroc</option>
                   <option value="France">France</option>
@@ -155,29 +267,27 @@ export default function Register() {
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-[#0F172A] mb-2">Rôle demandé</label>
+              <label className="mb-2 block text-sm font-medium text-[#0F172A]">Rôle demandé</label>
               <div className="relative">
-                <User className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-[#64748B]" />
+                <User className="absolute left-3 top-1/2 h-5 w-5 -translate-y-1/2 text-[#64748B]" />
                 <select
                   value={formData.role}
                   onChange={(event) =>
                     setFormData((current) => ({ ...current, role: event.target.value }))
                   }
-                  className="w-full pl-11 pr-4 py-3 bg-[#F8FAFC] border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#2D6CDF] focus:border-transparent"
+                  className="w-full rounded-lg border border-gray-200 bg-[#F8FAFC] py-3 pl-11 pr-4 focus:border-transparent focus:outline-none focus:ring-2 focus:ring-[#2D6CDF]"
                 >
+                  <option value="user">Utilisateur</option>
                   <option value="manager">Manager</option>
                   <option value="analyst">Analyste</option>
-                  <option value="admin">Administrateur</option>
                 </select>
               </div>
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-[#0F172A] mb-2">
-                Mot de passe
-              </label>
+              <label className="mb-2 block text-sm font-medium text-[#0F172A]">Mot de passe</label>
               <div className="relative">
-                <Lock className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-[#64748B]" />
+                <Lock className="absolute left-3 top-1/2 h-5 w-5 -translate-y-1/2 text-[#64748B]" />
                 <input
                   type={showPassword ? "text" : "password"}
                   value={formData.password}
@@ -185,26 +295,26 @@ export default function Register() {
                     setFormData((current) => ({ ...current, password: event.target.value }))
                   }
                   placeholder="********"
-                  className="w-full pl-11 pr-11 py-3 bg-[#F8FAFC] border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#2D6CDF] focus:border-transparent"
+                  className="w-full rounded-lg border border-gray-200 bg-[#F8FAFC] py-3 pl-11 pr-11 focus:border-transparent focus:outline-none focus:ring-2 focus:ring-[#2D6CDF]"
                   required
                   minLength={8}
                 />
                 <button
                   type="button"
                   onClick={() => setShowPassword((value) => !value)}
-                  className="absolute right-3 top-1/2 transform -translate-y-1/2 text-[#64748B] hover:text-[#0F172A]"
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-[#64748B] hover:text-[#0F172A]"
                 >
-                  {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
+                  {showPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
                 </button>
               </div>
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-[#0F172A] mb-2">
+              <label className="mb-2 block text-sm font-medium text-[#0F172A]">
                 Confirmer le mot de passe
               </label>
               <div className="relative">
-                <Lock className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-[#64748B]" />
+                <Lock className="absolute left-3 top-1/2 h-5 w-5 -translate-y-1/2 text-[#64748B]" />
                 <input
                   type={showConfirmPassword ? "text" : "password"}
                   value={formData.confirmPassword}
@@ -215,19 +325,19 @@ export default function Register() {
                     }))
                   }
                   placeholder="********"
-                  className="w-full pl-11 pr-11 py-3 bg-[#F8FAFC] border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#2D6CDF] focus:border-transparent"
+                  className="w-full rounded-lg border border-gray-200 bg-[#F8FAFC] py-3 pl-11 pr-11 focus:border-transparent focus:outline-none focus:ring-2 focus:ring-[#2D6CDF]"
                   required
                   minLength={8}
                 />
                 <button
                   type="button"
                   onClick={() => setShowConfirmPassword((value) => !value)}
-                  className="absolute right-3 top-1/2 transform -translate-y-1/2 text-[#64748B] hover:text-[#0F172A]"
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-[#64748B] hover:text-[#0F172A]"
                 >
                   {showConfirmPassword ? (
-                    <EyeOff className="w-5 h-5" />
+                    <EyeOff className="h-5 w-5" />
                   ) : (
-                    <Eye className="w-5 h-5" />
+                    <Eye className="h-5 w-5" />
                   )}
                 </button>
               </div>
@@ -235,7 +345,7 @@ export default function Register() {
 
             <p className="text-xs text-[#64748B]">
               Le compte est créé comme utilisateur standard. Les informations entreprise/pays
-              restent côté interface pour l'instant.
+              restent côté interface pour l&apos;instant.
             </p>
 
             {errorMessage ? (
@@ -247,7 +357,7 @@ export default function Register() {
             <button
               type="submit"
               disabled={isSubmitting}
-              className="w-full bg-gradient-to-r from-[#2D6CDF] to-[#06B6D4] text-white py-3 rounded-lg font-semibold hover:opacity-90 transition-opacity shadow-lg shadow-blue-500/30 disabled:opacity-60 disabled:cursor-not-allowed"
+              className="w-full rounded-lg bg-gradient-to-r from-[#2D6CDF] to-[#06B6D4] py-3 font-semibold text-white shadow-lg shadow-blue-500/30 transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60"
             >
               {isSubmitting ? "Creation..." : "Créer un compte"}
             </button>
@@ -259,17 +369,23 @@ export default function Register() {
                 <div className="w-full border-t border-gray-200" />
               </div>
               <div className="relative flex justify-center text-sm">
-                <span className="px-2 bg-white text-[#64748B]">Ou continuer avec</span>
+                <span className="bg-white px-2 text-[#64748B]">Ou continuer avec</span>
               </div>
             </div>
 
-            <div className="mt-6 grid grid-cols-2 gap-3">
+            <div className="mt-6 grid grid-cols-1 gap-3">
               <button
                 type="button"
                 onClick={handleGoogleSignup}
-                className="flex items-center justify-center gap-2 px-4 py-3 bg-white border border-gray-200 rounded-lg text-sm font-medium text-[#0F172A] hover:bg-[#F8FAFC] transition-colors"
+                disabled={isLoading || !isGoogleConfigured}
+                className={`${oauthButtonClassName} border-gray-200 bg-white text-[#0F172A] hover:bg-[#F8FAFC]`}
+                title={
+                  !isLoading && !isGoogleConfigured
+                    ? "Configurez Google OAuth dans backend/.env pour activer ce bouton."
+                    : undefined
+                }
               >
-                <svg className="w-5 h-5" viewBox="0 0 24 24">
+                <svg className="h-5 w-5" viewBox="0 0 24 24">
                   <path
                     fill="#4285F4"
                     d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"
@@ -289,26 +405,13 @@ export default function Register() {
                 </svg>
                 <span>Google</span>
               </button>
-              <button
-                type="button"
-                onClick={handleMicrosoftSignup}
-                className="flex items-center justify-center gap-2 px-4 py-3 bg-white border border-gray-200 rounded-lg text-sm font-medium text-[#0F172A] hover:bg-[#F8FAFC] transition-colors"
-              >
-                <svg className="w-5 h-5" viewBox="0 0 24 24">
-                  <path fill="#f25022" d="M1 1h10v10H1z" />
-                  <path fill="#00a4ef" d="M13 1h10v10H13z" />
-                  <path fill="#7fba00" d="M1 13h10v10H1z" />
-                  <path fill="#ffb900" d="M13 13h10v10H13z" />
-                </svg>
-                <span>Microsoft</span>
-              </button>
             </div>
           </div>
 
           <div className="mt-8 text-center">
             <p className="text-sm text-[#64748B]">
               Vous avez déjà un compte ?{" "}
-              <Link to="/login" className="text-[#2D6CDF] hover:text-[#1d4ed8] font-medium">
+              <Link to="/login" className="font-medium text-[#2D6CDF] hover:text-[#1d4ed8]">
                 Se connecter
               </Link>
             </p>
@@ -316,9 +419,9 @@ export default function Register() {
         </div>
 
         <div className="hidden lg:block">
-          <div className="bg-gradient-to-br from-[#2D6CDF] to-[#7C3AED] rounded-2xl p-8 text-white shadow-2xl">
-            <h3 className="text-2xl font-bold mb-6">Rejoignez BC SKILLS FleetConnect</h3>
-            <div className="space-y-4 mb-8">
+          <div className="rounded-2xl bg-gradient-to-br from-[#2D6CDF] to-[#7C3AED] p-8 text-white shadow-2xl">
+            <h3 className="mb-6 text-2xl font-bold">Rejoignez BC SKILLS FleetConnect</h3>
+            <div className="mb-8 space-y-4">
               <BenefitCard
                 title="Gestion centralisée"
                 description="Gérez toutes vos lignes mobiles depuis une seule plateforme"
@@ -337,12 +440,12 @@ export default function Register() {
               />
             </div>
 
-            <div className="bg-white/10 backdrop-blur-sm rounded-xl p-6 border border-white/20">
-              <p className="text-sm text-white/80 mb-4">
+            <div className="rounded-xl border border-white/20 bg-white/10 p-6 backdrop-blur-sm">
+              <p className="mb-4 text-sm text-white/80">
                 Rejoignez plus de 200 entreprises marocaines qui nous font confiance
               </p>
               <div className="flex items-center gap-2">
-                <div className="w-2 h-2 bg-[#16A34A] rounded-full animate-pulse" />
+                <div className="h-2 w-2 animate-pulse rounded-full bg-[#16A34A]" />
                 <span className="text-sm">Support 24/7 disponible</span>
               </div>
             </div>
@@ -356,11 +459,11 @@ export default function Register() {
 function BenefitCard({ title, description }: { title: string; description: string }) {
   return (
     <div className="flex items-start gap-3">
-      <div className="w-8 h-8 bg-white/20 rounded-lg flex items-center justify-center flex-shrink-0">
+      <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-white/20">
         <span>+</span>
       </div>
       <div>
-        <h4 className="font-semibold mb-1">{title}</h4>
+        <h4 className="mb-1 font-semibold">{title}</h4>
         <p className="text-sm text-white/80">{description}</p>
       </div>
     </div>

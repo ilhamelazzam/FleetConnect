@@ -87,3 +87,30 @@ def manager_headers(client: TestClient, manager_user) -> dict[str, str]:
     )
     access_token = response.json()["access_token"]
     return {"Authorization": f"Bearer {access_token}"}
+
+
+@pytest.fixture
+def analyst_user(db_session):
+    return create_user(
+        db_session,
+        UserCreate(
+            full_name="Analyst Test",
+            email="analyst@test.com",
+            password="Analyst123!",
+            role="analyst",
+            is_active=True,
+        ),
+    )
+
+
+@pytest.fixture
+def analyst_headers(client: TestClient, analyst_user) -> dict[str, str]:
+    response = client.post(
+        "/api/v1/auth/login",
+        json={
+            "email": analyst_user.email,
+            "password": "Analyst123!",
+        },
+    )
+    access_token = response.json()["access_token"]
+    return {"Authorization": f"Bearer {access_token}"}

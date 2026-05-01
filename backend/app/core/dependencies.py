@@ -7,7 +7,12 @@ from app.core.config import get_settings
 from app.core.logging import get_security_logger
 from app.db.session import get_db_session
 from app.models.user import User
-from app.services.auth_service import get_current_active_user, get_current_user, require_admin
+from app.services.auth_service import (
+    get_current_active_user,
+    get_current_user,
+    require_admin,
+    require_manager_or_admin,
+)
 from app.services.user_service import get_user_by_id
 
 security_logger = get_security_logger()
@@ -17,6 +22,7 @@ DbSession = Annotated[Session, Depends(get_db_session)]
 CurrentUser = Annotated[User, Depends(get_current_user)]
 CurrentActiveUser = Annotated[User, Depends(get_current_active_user)]
 CurrentAdminUser = Annotated[User, Depends(require_admin)]
+CurrentManagerOrAdminUser = Annotated[User, Depends(require_manager_or_admin)]
 
 
 DEFAULT_PAGE_SIZE = settings.default_page_size

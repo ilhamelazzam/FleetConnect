@@ -5,17 +5,22 @@ import OAuthCallback from "./pages/OAuthCallback";
 import Register from "./pages/Register";
 import ForgotPassword from "./pages/ForgotPassword";
 import ResetPassword from "./pages/ResetPassword";
+import AccessDenied from "./pages/AccessDenied";
 import Admin from "./pages/Admin";
+import CustomerRisk from "./pages/CustomerRisk";
 import Dashboard from "./pages/Dashboard";
 import PhoneLines from "./pages/PhoneLines";
+import FleetAccess from "./pages/FleetAccess";
 import Plans from "./pages/Plans";
+import PlanAssignments from "./pages/PlanAssignments";
 import Consumption from "./pages/Consumption";
 import Anomalies from "./pages/Anomalies";
 import Predictions from "./pages/Predictions";
 import Recommendations from "./pages/Recommendations";
 import Reports from "./pages/Reports";
-import Users from "./pages/Users";
+import Profile from "./pages/Profile";
 import Settings from "./pages/Settings";
+import Users from "./pages/Users";
 import LineDetail from "./pages/LineDetail";
 import AlertDetail from "./pages/AlertDetail";
 import Layout from "./components/Layout";
@@ -74,15 +79,25 @@ export const router = createBrowserRouter(
                 { path: "/dashboard", Component: Dashboard },
                 { path: "/lignes", Component: PhoneLines },
                 { path: "/lignes/:id", Component: LineDetail },
+                { path: "/acces-flotte", Component: FleetAccess },
                 { path: "/forfaits", Component: Plans },
+                { path: "/forfaits/attributions", Component: PlanAssignments },
                 { path: "/consommations", Component: Consumption },
                 { path: "/anomalies", Component: Anomalies },
                 { path: "/anomalies/:id", Component: AlertDetail },
                 { path: "/predictions", Component: Predictions },
                 { path: "/recommandations", Component: Recommendations },
                 { path: "/rapports", Component: Reports },
-                { path: "/utilisateurs", Component: Users },
-                { path: "/parametres", Component: Settings },
+                { path: "/risque-client", Component: CustomerRisk },
+                { path: "/profil", Component: Profile },
+                { path: "/acces-refuse", Component: AccessDenied },
+                {
+                  Component: RequireAdmin,
+                  children: [
+                    { path: "/utilisateurs", Component: Users },
+                    { path: "/parametres", Component: Settings },
+                  ],
+                },
               ],
             },
           ],

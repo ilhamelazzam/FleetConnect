@@ -12,7 +12,8 @@ class RegisterRequest(BaseModel):
     full_name: str = Field(min_length=2, max_length=120)
     email: EmailStr
     password: str = Field(min_length=8, max_length=128)
-    role: UserRole = "manager"
+    photo_url: str | None = Field(default=None, max_length=1_000_000)
+    role: UserRole = "user"
 
 
 class RefreshTokenRequest(BaseModel):
@@ -40,6 +41,15 @@ class MessageResponse(BaseModel):
 
 class ResetPasswordRequest(VerifyResetCodeRequest):
     new_password: str = Field(min_length=8, max_length=128)
+
+
+class OAuthProviderStatus(BaseModel):
+    configured: bool
+
+
+class OAuthProvidersResponse(BaseModel):
+    google: OAuthProviderStatus
+    microsoft: OAuthProviderStatus
 
 
 class TokenResponse(BaseModel):

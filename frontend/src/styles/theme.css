@@ -291,6 +291,19 @@
     }
   }
 
+  @keyframes bc-chatbot-status-pulse {
+    0%,
+    100% {
+      transform: scale(1);
+      opacity: 1;
+    }
+
+    50% {
+      transform: scale(0.86);
+      opacity: 0.7;
+    }
+  }
+
   .bc-gradient-primary {
     background-image: linear-gradient(135deg, var(--bc-primary), var(--bc-primary-hover));
   }
@@ -365,7 +378,45 @@
 
   .bc-chatbot-scroll {
     scrollbar-gutter: stable;
+    scrollbar-width: thin;
+    scrollbar-color: rgba(129, 140, 248, 0.72) rgba(238, 242, 255, 0.72);
     scroll-behavior: smooth;
+    overscroll-behavior: contain;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .bc-chatbot-scroll::-webkit-scrollbar {
+    width: 10px;
+  }
+
+  .bc-chatbot-scroll::-webkit-scrollbar-track {
+    background: rgba(238, 242, 255, 0.72);
+    border-radius: 9999px;
+  }
+
+  .bc-chatbot-scroll::-webkit-scrollbar-thumb {
+    background: linear-gradient(180deg, rgba(129, 140, 248, 0.88), rgba(168, 85, 247, 0.82));
+    border: 2px solid rgba(255, 255, 255, 0.72);
+    border-radius: 9999px;
+    transition: background 180ms ease, border-color 180ms ease;
+  }
+
+  .bc-chatbot-scroll::-webkit-scrollbar-thumb:hover {
+    background: linear-gradient(180deg, rgba(99, 102, 241, 0.96), rgba(139, 92, 246, 0.92));
+  }
+
+  .bc-chatbot-shell {
+    background-image:
+      radial-gradient(circle at top right, rgba(129, 140, 248, 0.18), transparent 34%),
+      radial-gradient(circle at bottom left, rgba(56, 189, 248, 0.08), transparent 28%),
+      linear-gradient(180deg, rgba(255, 255, 255, 0.95), rgba(248, 250, 252, 0.92));
+    background-color: rgba(255, 255, 255, 0.9);
+  }
+
+  .bc-chatbot-history-panel {
+    background-image:
+      linear-gradient(180deg, rgba(255, 255, 255, 0.97), rgba(248, 250, 252, 0.94));
+    background-color: rgba(255, 255, 255, 0.94);
   }
 
   .bc-chatbot-message {
@@ -403,6 +454,14 @@
     animation: bc-chatbot-dot 1s ease-in-out infinite;
   }
 
+  .bc-chatbot-status-dot {
+    height: 0.45rem;
+    width: 0.45rem;
+    border-radius: 9999px;
+    background: currentColor;
+    animation: bc-chatbot-status-pulse 1.4s ease-in-out infinite;
+  }
+
   .dark .bc-surface-primary {
     background-image: linear-gradient(135deg, rgba(59, 130, 246, 0.2) 0%, rgba(8, 16, 31, 0.96) 78%);
   }
@@ -430,6 +489,19 @@
 
   .dark .bc-surface-neutral {
     background-image: linear-gradient(135deg, rgba(15, 23, 42, 0.94) 0%, rgba(8, 16, 31, 0.96) 78%);
+  }
+
+  .dark .bc-chatbot-shell {
+    background-image:
+      radial-gradient(circle at top right, rgba(99, 102, 241, 0.2), transparent 32%),
+      linear-gradient(180deg, rgba(8, 16, 31, 0.96), rgba(15, 23, 42, 0.94));
+    background-color: rgba(8, 16, 31, 0.94);
+  }
+
+  .dark .bc-chatbot-history-panel {
+    background-image:
+      linear-gradient(180deg, rgba(8, 16, 31, 0.98), rgba(15, 23, 42, 0.96));
+    background-color: rgba(8, 16, 31, 0.97);
   }
 }
 

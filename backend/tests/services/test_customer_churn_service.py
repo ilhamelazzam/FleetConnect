@@ -7,6 +7,7 @@ import pytest
 from app.core.config import get_settings
 from app.services.customer_churn_service import (
     clear_customer_churn_cache,
+    get_customer_churn_consumption,
     get_customer_churn_filters,
     get_customer_churn_overview,
     get_customer_churn_reports,
@@ -63,6 +64,8 @@ def test_customer_churn_lists_are_sorted_and_filtered(customer_churn_csvs: tuple
     recommendations = list_customer_churn_recommendations(limit=10)
 
     assert customers["items"][0]["customer_id"] == "0001-AAAAA"
+    assert customers["items"][0]["data_usage_gb"] == 25.0
+    assert customers["items"][0]["over_quota_flag"] is True
     assert predictions["total"] == 2
     assert predictions["items"][0]["risk_level"] == "Critique"
     assert recommendations["items"][1]["customer_id"] == "0003-CCCCC"
@@ -104,3 +107,37 @@ Male;1;No;No;6;Yes;Yes;Fiber optic;No;No;No;No;Yes;Yes;Month-to-month;Yes;Electr
     refreshed_overview = get_customer_churn_overview()
     assert refreshed_overview["kpis"]["total_customers"] == 1
     assert refreshed_overview["kpis"]["high_risk_customers"] == 1
+
+
+def test_customer_churn_overview_returns_empty_payload_when_output_csv_is_missing(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    input_csv_path = tmp_path / "customer_churn_input.csv"
+    missing_output_csv_path = tmp_path / "missing_customer_churn_output.csv"
+    input_csv_path.write_text(RAW_CSV_CONTENT, encoding="utf-8")
+
+    monkeypatch.setenv("CUSTOMER_CHURN_INPUT_CSV_PATH", str(input_csv_path))
+    monkeypatch.setenv("CUSTOMER_CHURN_OUTPUT_CSV_PATH", str(missing_output_csv_path))
+    get_settings.cache_clear()
+    clear_customer_churn_cache()
+
+    overview = get_customer_churn_overview()
+
+    assert overview["kpis"]["total_customers"] == 0
+    assert overview["top_at_risk_customers"] == []
+
+    clear_customer_churn_cache()
+    get_settings.cache_clear()
+
+
+def test_customer_churn_consumption_returns_expected_kpis(
+    customer_churn_csvs: tuple[Path, Path],
+) -> None:
+    consumption = get_customer_churn_consumption()
+
+    assert consumption["kpis"]["total_lines"] == 3
+    assert consumption["kpis"]["over_quota_lines"] == 1
+    assert consumption["kpis"]["roaming_lines"] == 1
+    assert consumption["cost_by_operator"][0]["label"] == "Maroc Telecom"
+    assert consumption["priority_lines"][0]["customer_id"] == "0001-AAAAA"

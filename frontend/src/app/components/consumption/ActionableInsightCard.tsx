@@ -130,7 +130,7 @@ export default function ActionableInsightCard({
           </div>
         </div>
         <div className={cn("rounded-2xl border px-4 py-3", styles.metric)}>
-          <p className="text-xs font-semibold uppercase tracking-[0.14em] text-[var(--bc-neutral-muted)]">Score IA</p>
+          <p className="text-xs font-semibold uppercase tracking-[0.14em] text-[var(--bc-neutral-muted)]">Score estime</p>
           <div className="mt-2 inline-flex items-center gap-2">
             <Brain className="h-4 w-4 text-[var(--bc-ai-start)]" />
             <span className="text-sm font-semibold text-[var(--bc-neutral-strong)]">{score}/100</span>
@@ -139,7 +139,7 @@ export default function ActionableInsightCard({
       </div>
 
       <div className="mt-5 rounded-2xl border border-[var(--bc-ai-border)] bg-[linear-gradient(135deg,rgba(99,102,241,0.08),rgba(139,92,246,0.06),var(--bg-card))] p-4">
-        <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[var(--bc-ai-start)]">Recommandation IA</p>
+        <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[var(--bc-ai-start)]">Suggestion</p>
         <p className="mt-2 text-sm font-medium leading-6 text-[var(--bc-neutral-strong)]">{recommendation}</p>
       </div>
 

@@ -9,6 +9,7 @@ from app.core.dependencies import (
     PaginationOffset,
 )
 from app.schemas.mobile_fleet import (
+    MobileFleetAdvancedKpiRead,
     MobileFleetConsumptionRead,
     MobileFleetDeviceListRead,
     MobileFleetFiltersRead,
@@ -16,6 +17,7 @@ from app.schemas.mobile_fleet import (
     MobileFleetRecommendationListRead,
     MobileFleetReportsRead,
 )
+from app.services.mobile_fleet_advanced_kpi_service import get_mobile_fleet_advanced_kpis
 from app.services.mobile_fleet_service import (
     get_mobile_fleet_consumption,
     get_mobile_fleet_filters,
@@ -55,6 +57,13 @@ def read_mobile_fleet_overview(
         risk_level=_normalize_optional_filter(risk_level),
     )
     return MobileFleetOverviewRead(**overview)
+
+
+@router.get("/advanced-kpis", response_model=MobileFleetAdvancedKpiRead)
+def read_mobile_fleet_advanced_kpis(
+    _: CurrentActiveUser,
+) -> MobileFleetAdvancedKpiRead:
+    return MobileFleetAdvancedKpiRead(**get_mobile_fleet_advanced_kpis())
 
 
 @router.get("/filters", response_model=MobileFleetFiltersRead)

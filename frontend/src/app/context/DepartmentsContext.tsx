@@ -14,7 +14,7 @@ import {
   type CreateDepartmentPayload,
   type UpdateDepartmentPayload,
 } from "../lib/api";
-import { isAdminUser } from "../lib/roles";
+import { canManageUsers } from "../lib/roles";
 import { useAuth } from "./AuthContext";
 
 export interface DepartmentsContextValue {
@@ -62,7 +62,7 @@ export function DepartmentsProvider({ children }: { children: ReactNode }) {
 
     try {
       const activePromise = fleetAccessApi.departments(token);
-      const allPromise = isAdminUser(user)
+      const allPromise = canManageUsers(user)
         ? fleetAccessApi.departments(token, { include_inactive: true })
         : activePromise;
       const [activeDepartments, managementDepartments] = await Promise.all([

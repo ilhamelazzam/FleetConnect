@@ -94,3 +94,22 @@ def test_cache_refreshes_when_csv_changes(cdr_analytics_csv: Path) -> None:
     refreshed_overview = get_cdr_overview()
     assert refreshed_overview["kpis"]["total_calls"] == 1
     assert refreshed_overview["kpis"]["suspicious_calls"] == 1
+
+
+def test_cdr_overview_returns_empty_payload_when_csv_is_missing(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    missing_csv = tmp_path / "missing_cdr.csv"
+
+    monkeypatch.setenv("CDR_ANALYTICS_CSV_PATH", str(missing_csv))
+    get_settings.cache_clear()
+    clear_cdr_analytics_cache()
+
+    overview = get_cdr_overview()
+
+    assert overview["kpis"]["total_calls"] == 0
+    assert [item["count"] for item in overview["risk_distribution"]] == [0, 0, 0, 0]
+
+    clear_cdr_analytics_cache()
+    get_settings.cache_clear()

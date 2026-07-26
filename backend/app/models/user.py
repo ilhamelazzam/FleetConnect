@@ -7,6 +7,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.db.base import Base
 
 if TYPE_CHECKING:
+    from app.models.company import Company
     from app.models.fleet_access import Department
 
 
@@ -18,15 +19,29 @@ class User(Base):
     email: Mapped[str] = mapped_column(String(255), nullable=False, unique=True, index=True)
     hashed_password: Mapped[str] = mapped_column(String(255), nullable=False)
     photo_url: Mapped[str | None] = mapped_column(Text, nullable=True)
+    phone: Mapped[str | None] = mapped_column(String(30), nullable=True)
     role: Mapped[str] = mapped_column(String(50), nullable=False, default="manager")
+    company_id: Mapped[int | None] = mapped_column(
+        ForeignKey("companies.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
     department_id: Mapped[int | None] = mapped_column(
         ForeignKey("departments.id", ondelete="SET NULL"),
         nullable=True,
         index=True,
     )
+    company: Mapped["Company | None"] = relationship("Company", back_populates="users", lazy="selectin")
     department: Mapped["Department | None"] = relationship("Department", lazy="selectin")
+    requested_department: Mapped[str | None] = mapped_column(String(120), nullable=True)
     job_profile: Mapped[str | None] = mapped_column(String(120), nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    account_status: Mapped[str] = mapped_column(
+        String(30),
+        nullable=False,
+        default="active",
+        index=True,
+    )
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         nullable=False,
@@ -45,8 +60,17 @@ class User(Base):
 
     @property
     def department_name(self) -> str | None:
-        return self.department.name if self.department else None
+        if self.department:
+            return self.department.name
+        return self.requested_department
+
+    @property
+    def company_name(self) -> str | None:
+        return self.company.name if self.company else None
 
     @property
     def status(self) -> str:
+        normalized_status = (self.account_status or "").strip().lower()
+        if normalized_status in {"pending", "active", "suspended", "rejected"}:
+            return normalized_status
         return "active" if self.is_active else "suspended"

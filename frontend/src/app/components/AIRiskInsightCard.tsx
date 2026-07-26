@@ -147,7 +147,7 @@ export default function AIRiskInsightCard({
         secondaryText={action}
         status={recommendationStatus}
         fallbackStatus="pending"
-        title="Recommandation IA"
+        title="Suggestion"
         compact={compact}
         className="mt-4"
       />

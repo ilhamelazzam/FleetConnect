@@ -1,1 +1,3 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap');
+/* Local-first typography setup.
+   Avoids remote font lookups during local development and offline demos.
+   The app falls back to the font stack defined in theme.css. */

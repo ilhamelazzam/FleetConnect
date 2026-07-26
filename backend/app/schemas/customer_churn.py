@@ -43,6 +43,11 @@ class CustomerChurnCustomerRead(BaseModel):
     total_cost_mad: float
     plan: str
     price_range_label: str
+    roaming_flag: bool
+    data_usage_gb: float
+    quota_gb: float
+    over_quota_flag: bool
+    anomaly_flag: bool
     risk_proba: float
     risk_score_100: float
     risk_level: str
@@ -67,6 +72,41 @@ class CustomerChurnPredictionRead(CustomerChurnCustomerRead):
 
 class CustomerChurnRecommendationRead(CustomerChurnPredictionRead):
     recommendation_reason: str
+
+
+class CustomerChurnConsumptionKpiRead(BaseModel):
+    total_lines: int
+    total_monthly_cost_mad: float
+    total_future_cost_mad: float
+    total_future_cost_pred_mad: float
+    total_data_usage_gb: float
+    average_data_usage_gb: float
+    average_quota_gb: float
+    over_quota_lines: int
+    roaming_lines: int
+    anomaly_lines: int
+    high_risk_lines: int
+    average_risk_score: float
+
+
+class CustomerChurnConsumptionBreakdownRead(BaseModel):
+    label: str
+    line_count: int
+    total_monthly_cost_mad: float
+    total_future_cost_mad: float
+    total_data_usage_gb: float
+    over_quota_lines: int
+    anomaly_lines: int
+    average_risk_score: float
+
+
+class CustomerChurnConsumptionRead(BaseModel):
+    kpis: CustomerChurnConsumptionKpiRead
+    cost_by_operator: list[CustomerChurnConsumptionBreakdownRead] = Field(default_factory=list)
+    cost_by_department: list[CustomerChurnConsumptionBreakdownRead] = Field(default_factory=list)
+    usage_by_department: list[CustomerChurnConsumptionBreakdownRead] = Field(default_factory=list)
+    top_consumers: list[CustomerChurnPredictionRead] = Field(default_factory=list)
+    priority_lines: list[CustomerChurnPredictionRead] = Field(default_factory=list)
 
 
 class CustomerChurnCustomerListRead(BaseModel):

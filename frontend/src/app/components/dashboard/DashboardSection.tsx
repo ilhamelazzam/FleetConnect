@@ -9,8 +9,10 @@ import {
 } from "../ui/collapsible";
 
 interface DashboardSectionProps {
+  collapsedLabel?: string;
   children: ReactNode;
   className?: string;
+  expandedLabel?: string;
   collapsible?: boolean;
   contentClassName?: string;
   defaultOpen?: boolean;
@@ -20,8 +22,10 @@ interface DashboardSectionProps {
 }
 
 export default function DashboardSection({
+  collapsedLabel = "Ouvrir la section",
   children,
   className,
+  expandedLabel = "Replier",
   collapsible = false,
   contentClassName,
   defaultOpen = false,
@@ -61,9 +65,10 @@ export default function DashboardSection({
           <Button
             type="button"
             variant="outline"
+            size="sm"
             className="rounded-xl border-[var(--bc-neutral-border)]"
           >
-            {isOpen ? "Voir moins" : "Voir plus d'analyses"}
+            {isOpen ? expandedLabel : collapsedLabel}
             {isOpen ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
           </Button>
         </CollapsibleTrigger>

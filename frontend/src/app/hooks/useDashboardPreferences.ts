@@ -18,6 +18,13 @@ function buildDefaultVisibility(widgets: DashboardWidgetDefinition[]): Dashboard
   }, {});
 }
 
+function buildCompleteVisibility(widgets: DashboardWidgetDefinition[]): DashboardWidgetVisibility {
+  return widgets.reduce<DashboardWidgetVisibility>((visibility, widget) => {
+    visibility[widget.id] = true;
+    return visibility;
+  }, {});
+}
+
 function readStoredVisibility(
   storageKey: string,
   widgets: DashboardWidgetDefinition[],
@@ -99,10 +106,18 @@ export function useDashboardPreferences(
     writeStoredVisibility(storageKey, defaultVisibility);
   }
 
+  function showAllWidgets(): void {
+    const completeVisibility = buildCompleteVisibility(widgets);
+    setVisibility(completeVisibility);
+    writeStoredVisibility(storageKey, completeVisibility);
+  }
+
   return {
     isWidgetVisible,
     resetVisibility,
+    resetPreferences: showAllWidgets,
     setWidgetVisible,
+    showAllWidgets,
     visibleCount,
     visibility,
   };

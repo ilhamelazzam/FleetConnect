@@ -1,5 +1,5 @@
 const PAGE_SEARCH_QUERY_PARAM = "q";
-const HEADER_SEARCHABLE_PATHS = new Set(["/dashboard", "/lignes"]);
+const HEADER_SEARCHABLE_PATHS = new Set(["/dashboard", "/lignes", "/forfaits/attributions"]);
 
 export function canUseHeaderSearch(pathname: string): boolean {
   return HEADER_SEARCHABLE_PATHS.has(pathname);

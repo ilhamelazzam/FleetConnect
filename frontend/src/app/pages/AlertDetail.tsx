@@ -130,7 +130,7 @@ export default function AlertDetail() {
                 </div>
                 <div>
                   <div className="mb-2 flex flex-wrap items-center gap-3">
-                    <h1 className="text-2xl font-bold text-[#0F172A]">Alerte CDR-{alert.cdr_row_id}</h1>
+                    <h1 className="text-2xl font-bold text-[#0F172A]">Alerte {alert.cdr_row_id}</h1>
                     <span className={`rounded-full px-3 py-1 text-sm font-medium ${getSeverityClasses(alert.severity)}`}>
                       {formatSeverityLabel(alert.severity)}
                     </span>

@@ -4,24 +4,278 @@ import {
   readStoredSession,
   writeStoredSession,
 } from "./auth-session";
+import { emitApiErrorEvent } from "./error-events";
 
-export type ApiUserRole = "admin" | "manager" | "user" | "analyst";
-export type ApiUserStatus = "active" | "suspended";
+export type ApiUserRole =
+  | "super_admin"
+  | "admin"
+  | "company_admin"
+  | "manager"
+  | "user"
+  | "analyst";
+export type ApiUserStatus = "pending" | "active" | "suspended" | "rejected";
+export type ApiInvitationStatus = "pending" | "accepted" | "cancelled" | "expired";
+export type ApiInvitationExpiration = "7_days" | "14_days" | "30_days";
+export type ApiUserInvitationActionCode =
+  | "INVITATION_SENT"
+  | "INVITATION_RESENT"
+  | "INVITATION_ALREADY_SENT"
+  | "INVITATION_CANCELLED";
+export type ApiImageAnalysisMode = "quick" | "advanced" | "dashboard_analysis";
 
 export interface ApiUser {
   id: number;
   full_name: string;
   email: string;
   photo_url: string | null;
+  phone: string | null;
   role: ApiUserRole;
+  company_id: number | null;
+  company_name: string | null;
   department_id: number | null;
   department_name: string | null;
+  requested_department: string | null;
   job_profile: string | null;
   is_active: boolean;
+  account_status: ApiUserStatus | null;
   status: ApiUserStatus;
   updated_at: string;
   last_login_at: string | null;
   created_at: string;
+}
+
+export type ApiCompanyRegistrationStatus =
+  | "pending"
+  | "under_review"
+  | "approved"
+  | "rejected";
+export type ApiCompanyLifecycleStatus = "active" | "suspended" | "deleted";
+export type ApiCompanyRequestedRole = "ADMIN" | "MANAGER" | "ANALYST";
+export type ApiCompanyRegistrationEligibilityReason =
+  | "available"
+  | "active_request_exists"
+  | "active_user_exists"
+  | "resubmission_allowed";
+
+export interface ApiCompanyRegistrationDocument {
+  key: string;
+  label: string;
+  file_name: string;
+  download_url: string;
+}
+
+export interface ApiCompanyStatusHistory {
+  id: number;
+  action: string;
+  title: string;
+  comment: string | null;
+  previous_status: string | null;
+  next_status: string | null;
+  actor_user_id: number | null;
+  actor_user_name: string | null;
+  created_at: string;
+}
+
+export interface ApiCompanyRegistrationDecision {
+  status: ApiCompanyRegistrationStatus;
+  rejection_reason: string | null;
+  reviewed_at: string | null;
+  reviewed_by_user_id: number | null;
+  reviewed_by_name: string | null;
+}
+
+export interface ApiCompanyRegistrationSummary {
+  id: number;
+  responsible_full_name: string;
+  responsible_email: string;
+  responsible_phone: string;
+  job_title: string;
+  requested_role: ApiCompanyRequestedRole;
+  requested_role_label: string;
+  company_name: string;
+  sector: string;
+  city: string;
+  address_line: string | null;
+  region: string | null;
+  postal_code: string | null;
+  country: string | null;
+  company_phone: string;
+  ice: string | null;
+  rc: string | null;
+  primary_operator: string | null;
+  estimated_phone_lines: number;
+  employees_count: number;
+  operators: string[];
+  status: ApiCompanyRegistrationStatus;
+  is_deleted: boolean;
+  deleted_at: string | null;
+  deleted_by_user_id: number | null;
+  deleted_by_name: string | null;
+  previous_request_id: number | null;
+  resubmission_number: number;
+  reviewed_at: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ApiCompanyRegistrationDetail extends ApiCompanyRegistrationSummary {
+  tax_id: string | null;
+  cnss: string | null;
+  patente: string | null;
+  website: string | null;
+  latitude: number | null;
+  longitude: number | null;
+  coverage_zones: string[];
+  documents: ApiCompanyRegistrationDocument[];
+  history: ApiCompanyStatusHistory[];
+  decision: ApiCompanyRegistrationDecision;
+  approved_company_id: number | null;
+  approved_company_name: string | null;
+  approved_admin_user_id: number | null;
+  approved_admin_email: string | null;
+}
+
+export interface ApiCompanyRegistrationListResponse {
+  total: number;
+  offset: number;
+  limit: number;
+  items: ApiCompanyRegistrationSummary[];
+}
+
+export interface ApiCompanySummary {
+  id: number;
+  company_code: string | null;
+  name: string;
+  sector: string;
+  city: string;
+  country: string | null;
+  phone: string;
+  ice: string | null;
+  status: ApiCompanyLifecycleStatus;
+  user_count: number;
+  estimated_phone_lines: number;
+  operators: string[];
+  created_at: string;
+}
+
+export interface ApiCompanyAdminSummary {
+  id: number;
+  full_name: string;
+  email: string;
+  role: string;
+  company_id: number | null;
+  company_name: string | null;
+  created_at: string;
+}
+
+export interface ApiCompanyRegistrationStats {
+  pending: number;
+  under_review: number;
+  approved: number;
+  rejected: number;
+  this_month: number;
+  total: number;
+  active_companies: number;
+  total_users: number;
+  suspended_companies: number;
+  connections: number;
+}
+
+export interface ApiCompanyOperatorDistribution {
+  operator: string;
+  total: number;
+}
+
+export interface ApiCompanyRegistrationOverview {
+  stats: ApiCompanyRegistrationStats;
+  operator_distribution: ApiCompanyOperatorDistribution[];
+  recent_companies: ApiCompanySummary[];
+  recent_company_admins: ApiCompanyAdminSummary[];
+}
+
+export interface ApiCompanyRegistrationSubmitResponse {
+  message: string;
+  request_id: number;
+  status: ApiCompanyRegistrationStatus;
+  previous_request_id: number | null;
+  resubmission_number: number;
+}
+
+export interface ApiCompanyRegistrationActionResponse {
+  message: string;
+  request: ApiCompanyRegistrationDetail;
+}
+
+export interface ApiCompanyRegistrationEmailEligibility {
+  can_submit: boolean;
+  reason: ApiCompanyRegistrationEligibilityReason;
+  message: string;
+  previous_request_id: number | null;
+}
+
+export interface ApiCompanyListItem {
+  id: number;
+  company_code: string | null;
+  name: string;
+  sector: string;
+  city: string;
+  address_line: string | null;
+  region: string | null;
+  postal_code: string | null;
+  country: string | null;
+  phone: string;
+  ice: string | null;
+  rc: string | null;
+  tax_id: string | null;
+  cnss: string | null;
+  patente: string | null;
+  website: string | null;
+  status: ApiCompanyLifecycleStatus;
+  join_code: string | null;
+  estimated_phone_lines: number;
+  employees_count: number;
+  user_count: number;
+  active_user_count: number;
+  suspended_user_count: number;
+  pending_user_count: number;
+  admin_count: number;
+  operators: string[];
+  coverage_zones: string[];
+  logo_download_url: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ApiCompanyListResponse {
+  total: number;
+  offset: number;
+  limit: number;
+  items: ApiCompanyListItem[];
+}
+
+export interface ApiCompanyDashboardMetrics {
+  total_users: number;
+  active_users: number;
+  suspended_users: number;
+  pending_users: number;
+  admin_users: number;
+  estimated_phone_lines: number;
+  employees_count: number;
+  operators_count: number;
+}
+
+export interface ApiCompanyDashboard {
+  company: ApiCompanyListItem;
+  metrics: ApiCompanyDashboardMetrics;
+  admins: ApiCompanyAdminSummary[];
+  history: ApiCompanyStatusHistory[];
+}
+
+export interface ApiCompanyAuditLogListResponse {
+  total: number;
+  offset: number;
+  limit: number;
+  items: ApiCompanyStatusHistory[];
 }
 
 export type ApiPhoneLineOccupationStatus =
@@ -176,6 +430,12 @@ export interface ApiCdrAlert extends ApiAIRiskInsightFields {
   fraud_risk_score_100: number;
   severity: string;
   is_alert: boolean;
+  alert_flag: boolean;
+  fraud_severity: string;
+  fraud_severity_score: number;
+  investigation_priority: string;
+  estimated_financial_loss: number;
+  ai_recommendation_priority: string;
   recommendation: string;
 }
 
@@ -208,6 +468,12 @@ export interface ApiCdrRecommendation extends ApiAIRiskInsightFields {
   fraud_type: string;
   call_cost_mad: number;
   fraud_risk_score_100: number;
+  alert_flag: boolean;
+  fraud_severity: string;
+  fraud_severity_score: number;
+  investigation_priority: string;
+  estimated_financial_loss: number;
+  ai_recommendation_priority: string;
   recommendation: string;
   recommendation_reason: string;
 }
@@ -243,6 +509,286 @@ export interface ApiCdrOverview {
   calls_by_zone: ApiCdrZoneDistribution[];
   top_risky_calls: ApiCdrAlert[];
   priority_alerts: ApiCdrAlert[];
+}
+
+export interface ApiCdrMapPoint {
+  city: string;
+  country: string;
+  region: string;
+  latitude: number;
+  longitude: number;
+  count: number;
+  alerts: number;
+  risk_score: number;
+  estimated_loss_mad: number;
+  top_recommendation: string;
+}
+
+export interface ApiCdrMapFlow {
+  origin_city: string;
+  origin_country: string;
+  origin_region: string;
+  origin_latitude: number;
+  origin_longitude: number;
+  destination_city: string;
+  destination_country: string;
+  destination_region: string;
+  destination_latitude: number;
+  destination_longitude: number;
+  count: number;
+  alerts: number;
+  risk_score: number;
+  estimated_loss_mad: number;
+}
+
+export interface ApiCdrMapUnknownLocation {
+  cdr_row_id: number;
+  field: string;
+  raw_value: string;
+  country: string;
+  reason: string;
+}
+
+export interface ApiCdrMapFilters {
+  operators: string[];
+  departments: string[];
+  risk_levels: string[];
+  fraud_severities: string[];
+  regions: string[];
+  modes: string[];
+  scopes: string[];
+}
+
+export interface ApiCdrMapResponse {
+  mode: string;
+  scope: string;
+  center: number[];
+  zoom: number;
+  points: ApiCdrMapPoint[];
+  flows: ApiCdrMapFlow[];
+  unknown_locations: ApiCdrMapUnknownLocation[];
+  filters: ApiCdrMapFilters;
+}
+
+export type ApiRoamingLocationSource =
+  | "gps_exact"
+  | "estimated_cdr"
+  | "estimated_mcc"
+  | "simulated_demo";
+
+export type ApiRoamingLineAssignmentSource = "direct" | "estimated_scope" | "demo";
+export type ApiRoamingRiskLevel = "low" | "medium" | "high" | "critical";
+
+export interface ApiRoamingMapPoint {
+  line_id: number | null;
+  phone_number: string | null;
+  employee_name: string | null;
+  department: string;
+  operator: string;
+  country: string;
+  city: string | null;
+  latitude: number;
+  longitude: number;
+  location_source: ApiRoamingLocationSource;
+  location_precision_label: string;
+  line_assignment_source: ApiRoamingLineAssignmentSource;
+  location_notice: string | null;
+  assignment_notice: string | null;
+  roaming_cost_mad: number;
+  data_usage_gb: number | null;
+  risk_level: ApiRoamingRiskLevel;
+  risk_label: string;
+  recommendation: string;
+  event_time: string | null;
+  roaming_event_count: number;
+  position_disclaimer: string;
+}
+
+export interface ApiRoamingMapCountryCost {
+  country: string;
+  total_cost_mad: number;
+  device_count: number;
+  critical_alerts: number;
+}
+
+export interface ApiRoamingMapStats {
+  roaming_devices: number;
+  total_roaming_cost_mad: number;
+  critical_alerts: number;
+  top_cost_countries: ApiRoamingMapCountryCost[];
+  exact_gps_count: number;
+  estimated_location_count: number;
+  simulated_location_count: number;
+}
+
+export interface ApiRoamingMapFilters {
+  countries: string[];
+  operators: string[];
+  departments: string[];
+  risk_levels: ApiRoamingRiskLevel[];
+  location_sources: ApiRoamingLocationSource[];
+  period_start: string | null;
+  period_end: string | null;
+}
+
+export interface ApiRoamingMapResponse {
+  points: ApiRoamingMapPoint[];
+  stats: ApiRoamingMapStats;
+  filters: ApiRoamingMapFilters;
+  generated_at: string;
+  privacy_notice: string;
+}
+
+export interface ApiRoamingIntelligenceDevice {
+  line_id: number | null;
+  phone_number: string | null;
+  employee: string | null;
+  department: string;
+  operator: string;
+  country: string;
+  city: string | null;
+  latitude: number;
+  longitude: number;
+  location_source: ApiRoamingLocationSource;
+  location_precision_label: string;
+  location_notice: string;
+  assignment_notice: string | null;
+  line_assignment_source: ApiRoamingLineAssignmentSource;
+  roaming_cost: number;
+  data_usage: number | null;
+  risk_level: ApiRoamingRiskLevel;
+  risk_score: number;
+  alerts: number;
+  fraud_signals: number;
+  anomaly_type: string;
+  roaming_active: boolean;
+  recommendation: string;
+  ai_reasoning: string[];
+  explanation: string;
+  last_event_at: string | null;
+  roaming_events: number;
+  call_zone: string;
+  fraud_flag: boolean;
+  call_cost_mad: number;
+  fraud_risk_score_100: number;
+  location_origin: string | null;
+  country_origin: string | null;
+  location_dest: string | null;
+  country_dest: string | null;
+}
+
+export interface ApiRoamingIntelligenceCountryCost {
+  country: string;
+  total_roaming_cost_mad: number;
+  device_count: number;
+  critical_alerts: number;
+  fraud_signals: number;
+}
+
+export interface ApiRoamingIntelligenceZone {
+  label: string;
+  country: string;
+  city: string | null;
+  latitude: number;
+  longitude: number;
+  intensity: number;
+  device_count: number;
+  total_roaming_cost_mad: number;
+  critical_alerts: number;
+  fraud_signals: number;
+  risk_level: ApiRoamingRiskLevel;
+}
+
+export interface ApiRoamingIntelligenceFlow {
+  origin_label: string;
+  destination_label: string;
+  origin_latitude: number;
+  origin_longitude: number;
+  destination_latitude: number;
+  destination_longitude: number;
+  total_roaming_cost_mad: number;
+  alerts: number;
+  event_count: number;
+  risk_level: ApiRoamingRiskLevel;
+}
+
+export interface ApiRoamingIntelligenceTimelinePoint {
+  bucket: string;
+  total_roaming_cost_mad: number;
+  active_devices: number;
+  alerts: number;
+  critical_alerts: number;
+  fraud_signals: number;
+}
+
+export interface ApiRoamingCountryInsight {
+  country: string;
+  risk_level: ApiRoamingRiskLevel;
+  total_roaming_cost_mad: number;
+  active_devices: number;
+  critical_alerts: number;
+  fraud_signals: number;
+  dominant_operator: string | null;
+  top_department: string | null;
+  explanation_factors: string[];
+  explanation: string;
+}
+
+export interface ApiRoamingCriticalZone {
+  label: string;
+  country: string;
+  city: string | null;
+  latitude: number;
+  longitude: number;
+  intensity: number;
+  total_roaming_cost_mad: number;
+  active_devices: number;
+  alerts: number;
+  critical_alerts: number;
+  fraud_signals: number;
+  risk_level: ApiRoamingRiskLevel;
+  explanation: string;
+}
+
+export interface ApiRoamingIntelligenceStats {
+  active_roaming_devices: number;
+  total_roaming_cost_mad: number;
+  critical_roaming_alerts: number;
+  fraud_roaming_detected: number;
+  top_cost_countries: ApiRoamingIntelligenceCountryCost[];
+  highest_risk_country: string | null;
+  exact_gps_locations: number;
+  estimated_locations: number;
+  simulated_locations: number;
+}
+
+export interface ApiRoamingIntelligenceFilters {
+  countries: string[];
+  operators: string[];
+  departments: string[];
+  risk_levels: ApiRoamingRiskLevel[];
+  anomaly_types: string[];
+  location_sources: ApiRoamingLocationSource[];
+  roaming_states: boolean[];
+  fraud_states: boolean[];
+  period_start: string | null;
+  period_end: string | null;
+}
+
+export interface ApiRoamingIntelligenceResponse {
+  devices: ApiRoamingIntelligenceDevice[];
+  stats: ApiRoamingIntelligenceStats;
+  filters: ApiRoamingIntelligenceFilters;
+  heatmap: ApiRoamingIntelligenceZone[];
+  clusters: ApiRoamingIntelligenceZone[];
+  critical_zones: ApiRoamingCriticalZone[];
+  movement_flows: ApiRoamingIntelligenceFlow[];
+  timeline: ApiRoamingIntelligenceTimelinePoint[];
+  country_insights: ApiRoamingCountryInsight[];
+  generated_at: string;
+  live_supported: boolean;
+  live_refresh_interval_seconds: number;
+  privacy_notice: string;
 }
 
 export interface ApiMobileFleetKpi {
@@ -305,6 +851,74 @@ export interface ApiMobileFleetOverview {
   devices_by_category: ApiMobileFleetDistribution[];
   budget_by_department: ApiMobileFleetBudgetBreakdown[];
   top_devices: ApiMobileFleetDevice[];
+}
+
+export interface ApiMobileFleetAdvancedKpis {
+  total_devices: number;
+  total_estimated_budget_mad: number;
+  total_cost_12_months_mad: number;
+  fleet_health_score: number;
+  average_fit_score: number;
+  adapted_devices: number;
+  unfit_devices: number;
+  oversized_devices: number;
+  undersized_devices: number;
+  potential_savings_mad: number;
+  alerts_summary: string;
+  fit_rate_pct: number;
+  optimization_rate_pct: number;
+}
+
+export interface ApiFleetHealthScoreBreakdownPoint {
+  label: string;
+  value: number;
+}
+
+export interface ApiFleetHealthScoreFactor {
+  label: string;
+  category: string;
+  value: string;
+  impact_score: number;
+  severity: "low" | "medium" | "high" | "critical";
+  evidence: string;
+}
+
+export interface ApiFleetHealthScoreSubScores {
+  cost_score: number;
+  fraud_score: number;
+  anomaly_score: number;
+  optimization_score: number;
+  equipment_score: number;
+  workflow_score: number;
+  risk_score: number;
+  roaming_score: number;
+}
+
+export interface ApiFleetHealthScoreResponse {
+  fleet_health_score: number;
+  fleet_health_level: "excellent" | "bon" | "moyen" | "eleve" | "critique";
+  global_risk: "low" | "medium" | "high" | "critical";
+  trend: "improving" | "stable" | "declining";
+  scores: ApiFleetHealthScoreSubScores;
+  risk_score: number;
+  cost_score: number;
+  fraud_score: number;
+  optimization_score: number;
+  anomaly_score: number;
+  equipment_score: number;
+  workflow_score: number;
+  roaming_score: number;
+  main_risks: string[];
+  main_strengths: string[];
+  recommendations: string[];
+  explanation: string;
+  score_breakdown: ApiFleetHealthScoreBreakdownPoint[];
+  key_factors: ApiFleetHealthScoreFactor[];
+  summary_updated_at: string;
+  sources: string[];
+  cached: boolean;
+  fallback_used: boolean;
+  duration_ms: number | null;
 }
 
 export interface ApiMobileFleetConsumption {
@@ -385,6 +999,11 @@ export interface ApiCustomerChurnCustomer extends ApiAIRiskInsightFields {
   total_cost_mad: number;
   plan: string;
   price_range_label: string;
+  roaming_flag: boolean;
+  data_usage_gb: number;
+  quota_gb: number;
+  over_quota_flag: boolean;
+  anomaly_flag: boolean;
   risk_proba: number;
   risk_score_100: number;
   risk_level: string;
@@ -455,6 +1074,41 @@ export interface ApiCustomerChurnReports {
   churn_by_price_range: ApiCustomerChurnBreakdown[];
   risk_by_department: ApiCustomerChurnBreakdown[];
   top_revenue_at_risk: ApiCustomerChurnRecommendation[];
+}
+
+export interface ApiCustomerChurnConsumptionKpi {
+  total_lines: number;
+  total_monthly_cost_mad: number;
+  total_future_cost_mad: number;
+  total_future_cost_pred_mad: number;
+  total_data_usage_gb: number;
+  average_data_usage_gb: number;
+  average_quota_gb: number;
+  over_quota_lines: number;
+  roaming_lines: number;
+  anomaly_lines: number;
+  high_risk_lines: number;
+  average_risk_score: number;
+}
+
+export interface ApiCustomerChurnConsumptionBreakdown {
+  label: string;
+  line_count: number;
+  total_monthly_cost_mad: number;
+  total_future_cost_mad: number;
+  total_data_usage_gb: number;
+  over_quota_lines: number;
+  anomaly_lines: number;
+  average_risk_score: number;
+}
+
+export interface ApiCustomerChurnConsumption {
+  kpis: ApiCustomerChurnConsumptionKpi;
+  cost_by_operator: ApiCustomerChurnConsumptionBreakdown[];
+  cost_by_department: ApiCustomerChurnConsumptionBreakdown[];
+  usage_by_department: ApiCustomerChurnConsumptionBreakdown[];
+  top_consumers: ApiCustomerChurnPrediction[];
+  priority_lines: ApiCustomerChurnPrediction[];
 }
 
 export interface ApiPlan {
@@ -999,6 +1653,28 @@ export interface RegisterPayload {
   role: string;
 }
 
+export interface AcceptInvitationPayload {
+  token: string;
+  password: string;
+  phone?: string | null;
+}
+
+export interface AcceptInvitationResponse {
+  message: string;
+  company_name: string;
+}
+
+export interface InvitationValidationResponse {
+  company_name: string;
+  full_name: string;
+  email: string;
+  phone: string | null;
+  department: string;
+  job_title: string;
+  role: ApiUserRole;
+  expires_at: string;
+}
+
 export interface AuthResponse {
   access_token: string;
   refresh_token: string;
@@ -1017,10 +1693,13 @@ export interface CreateUserPayload {
   email: string;
   password: string;
   photo_url?: string | null;
+  phone?: string | null;
   role: ApiUserRole;
   department_id?: number | null;
+  requested_department?: string | null;
   job_profile?: string | null;
   is_active: boolean;
+  account_status?: ApiUserStatus | null;
 }
 
 export interface UpdateUserPayload {
@@ -1028,10 +1707,13 @@ export interface UpdateUserPayload {
   email?: string;
   password?: string | null;
   photo_url?: string | null;
+  phone?: string | null;
   role?: ApiUserRole;
   department_id?: number | null;
+  requested_department?: string | null;
   job_profile?: string | null;
   is_active?: boolean;
+  account_status?: ApiUserStatus | null;
 }
 
 export interface ListUsersParams {
@@ -1049,6 +1731,37 @@ export interface ChangeUserRolePayload {
 
 export interface SetUserStatusPayload {
   status: ApiUserStatus;
+}
+
+export interface CreateUserInvitationPayload {
+  full_name: string;
+  email: string;
+  phone?: string | null;
+  department: string;
+  job_title: string;
+  expiration: ApiInvitationExpiration;
+}
+
+export interface ApiUserInvitation {
+  id: number;
+  full_name: string;
+  email: string;
+  phone: string | null;
+  department: string;
+  role: string;
+  job_title: string;
+  expiration_date: string | null;
+  status: ApiInvitationStatus;
+  created_at: string;
+  created_by_id: number | null;
+  created_by_name: string | null;
+  invitation_url: string;
+}
+
+export interface ApiUserInvitationActionResponse {
+  code: ApiUserInvitationActionCode;
+  message: string;
+  invitation: ApiUserInvitation;
 }
 
 export interface CreatePhoneLinePayload {
@@ -1122,6 +1835,713 @@ export interface ApiOAuthProvidersStatus {
   microsoft: ApiOAuthProviderStatus;
 }
 
+export interface ApiChatContextMessage {
+  role: "assistant" | "user";
+  text: string;
+}
+
+export interface ApiChatRequest {
+  question: string;
+  conversation_id?: string | null;
+  history?: ApiChatContextMessage[];
+  analysis_mode?: ApiImageAnalysisMode;
+}
+
+export interface ApiChatResponse {
+  answer: string;
+  model: string;
+  title_hint: string | null;
+  sources: string[];
+  summary_updated_at: string;
+  cached: boolean;
+  fallback_used: boolean;
+  duration_ms: number | null;
+}
+
+export interface ApiChatActionPlanItem {
+  day: string;
+  title: string;
+  detail: string;
+  priority: "low" | "medium" | "high" | "critical";
+  reason: string;
+  impact: string;
+  deadline: string;
+  type: "cost" | "fraud" | "equipment" | "workflow" | "consumption";
+  status: "todo" | "in_progress" | "done";
+}
+
+export interface ApiChatActionPlanResponse extends ApiChatResponse {
+  plan_title: string;
+  subtitle: string;
+  fleet_health_score?: number | null;
+  global_risk?: "low" | "medium" | "high" | "critical" | null;
+  trend?: "improving" | "stable" | "declining" | null;
+  actions: ApiChatActionPlanItem[];
+  weekly_actions: ApiChatActionPlanItem[];
+  recommendations: string[];
+}
+
+export interface ApiChatImageResponse extends ApiChatResponse {
+  image_type: string;
+  ocr_text: string;
+  vision_analysis: string;
+  analysis_mode: ApiImageAnalysisMode;
+  analysis_status: "success" | "fallback";
+  advanced_analysis_available: boolean;
+  advanced_analysis_completed: boolean;
+  processing_message?: string | null;
+  processing_notices?: string[];
+  error_type?: string | null;
+  fallback_answer?: string | null;
+  detected_kpis: string[];
+  recommendations: string[];
+  decision_recommendations?: Array<{
+    title: string;
+    priority: "low" | "medium" | "high" | "critical";
+    impact: string;
+    estimated_saving?: string | null;
+    reason: string;
+  }>;
+  recommendation_notice?: string | null;
+  risk_level?: "low" | "medium" | "high" | "critical" | null;
+  optimization_score?: number | null;
+  anomaly_score?: number | null;
+  fraud_score?: number | null;
+  cost_score?: number | null;
+  confidence: number;
+  ocr_confidence?: number | null;
+  detected_operator?: string | null;
+  detected_anomalies?: string[];
+  analysis_metadata?: {
+    source_mode: string;
+    visible_kpis_used: string[];
+    blocked_global_context: boolean;
+    removed_unverified_claims: string[];
+    filtered_numbers: string[];
+    confidence_score: number;
+  } | null;
+  invoice_details?: {
+    operator?: string | null;
+    invoice_number?: string | null;
+    invoice_date?: string | null;
+    billing_period?: string | null;
+    amount_ht_mad?: string | null;
+    vat_amount_mad?: string | null;
+    amount_ttc_mad?: string | null;
+    total_amount_mad?: string | null;
+    billed_lines?: string[];
+    additional_fees?: string[];
+    overage_items?: string[];
+    anomalies?: string[];
+  } | null;
+  incident_details?: {
+    alert_type?: string | null;
+    severity?: string | null;
+    detected_at?: string | null;
+    operator?: string | null;
+    line_reference?: string | null;
+    suspect_cost_mad?: string | null;
+    call_volume?: string | null;
+    data_overage?: string | null;
+    error_message?: string | null;
+    priority?: string | null;
+    summary?: string | null;
+    critical_alert_count?: number | null;
+    exposure_rate?: string | null;
+    exposure_rate_pct?: number | null;
+    financial_impact_mad?: string | null;
+    financial_impact_value_mad?: number | null;
+    average_score?: string | null;
+    average_score_value?: number | null;
+    risk_score?: string | null;
+    max_risk_scores?: string[];
+    risky_entities?: string[];
+    repeated_anomalies?: string[];
+    visible_statuses?: string[];
+    critical_signals?: string[];
+    probable_causes?: string[];
+  } | null;
+  alert_intelligence?: {
+    alert_family?: string | null;
+    ai_risk_score?: number | null;
+    ocr_confidence_score?: number | null;
+    criticity?: "low" | "medium" | "high" | "critical" | null;
+    executive_summary?: string | null;
+    business_risk?: string | null;
+    financial_exposure_mad?: string | null;
+    potential_loss_mad?: string | null;
+    possible_savings_mad?: string | null;
+    priority_kpis?: string[];
+    visible_evidence?: string[];
+    at_risk_entities?: string[];
+    immediate_actions?: string[];
+    recommended_controls?: string[];
+    alert_timeline?: Array<{
+      label: string;
+      detail: string;
+      status?: "observed" | "watch" | "critical" | "action";
+    }>;
+    audit_focus?: string | null;
+  } | null;
+  workflow_details?: {
+    workflow_type?: string | null;
+    complexity_score?: number | null;
+    complexity_level?: "low" | "medium" | "high" | "critical" | null;
+    critical_steps?: string[];
+    detected_departments?: string[];
+    detected_roles?: string[];
+    automation_opportunities?: string[];
+    bottlenecks?: string[];
+    repeated_validations?: string[];
+    summary?: string | null;
+  } | null;
+  equipment_details?: {
+    equipment_type?: string | null;
+    brand?: string | null;
+    model?: string | null;
+    serial_number?: string | null;
+    operator?: string | null;
+    visible_condition?: string | null;
+    device_version?: string | null;
+    sim_information?: string | null;
+    label_information?: string | null;
+    usage_summary?: string | null;
+    detected_issues?: string[];
+    maintenance_recommendations?: string[];
+    replacement_needed?: boolean;
+    condition_score?: number | null;
+    criticality_score?: number | null;
+    obsolescence_score?: number | null;
+    maintenance_score?: number | null;
+    summary?: string | null;
+  } | null;
+  highlighted_image?: string | null;
+  annotations?: Array<{
+    label: string;
+    type: string;
+    bbox: [number, number, number, number] | number[];
+    confidence: number;
+  }>;
+}
+
+export interface ApiExecutiveReportImageContext {
+  image_type: string;
+  detected_operator?: string | null;
+  detected_kpis?: string[];
+  detected_anomalies?: string[];
+  recommendations?: string[];
+  decision_recommendations?: Array<{
+    title: string;
+    priority: "low" | "medium" | "high" | "critical";
+    impact: string;
+    estimated_saving?: string | null;
+    reason: string;
+  }>;
+  risk_level?: "low" | "medium" | "high" | "critical" | null;
+  optimization_score?: number | null;
+  anomaly_score?: number | null;
+  fraud_score?: number | null;
+  cost_score?: number | null;
+  invoice_details?: ApiChatImageResponse["invoice_details"];
+  incident_details?: ApiChatImageResponse["incident_details"];
+  workflow_details?: ApiChatImageResponse["workflow_details"];
+  equipment_details?: ApiChatImageResponse["equipment_details"];
+}
+
+export interface ApiExecutiveReportRequest {
+  conversation_id?: string | null;
+  history?: ApiChatContextMessage[];
+  image_analyses?: ApiExecutiveReportImageContext[];
+}
+
+export interface ApiExecutiveReportScoreExplanation {
+  label: string;
+  score: number;
+  level: "excellent" | "bon" | "moyen" | "critique";
+  direction: "higher_is_better" | "higher_is_worse";
+  explanation: string;
+}
+
+export interface ApiExecutiveReportCostItem {
+  title: string;
+  amount_mad: number;
+  category: string;
+  owner?: string | null;
+  reason: string;
+}
+
+export interface ApiExecutiveReportDepartmentItem {
+  department: string;
+  risk_score: number;
+  monthly_cost_mad?: number | null;
+  alert_count: number;
+  reason: string;
+}
+
+export interface ApiExecutiveReportOperatorItem {
+  operator: string;
+  total_cost_mad: number;
+  suspicious_calls: number;
+  roaming_lines: number;
+  reason: string;
+}
+
+export interface ApiExecutiveReportAnomalyItem {
+  title: string;
+  severity: "low" | "medium" | "high" | "critical";
+  source: string;
+  reason: string;
+}
+
+export interface ApiExecutiveReportFraudSignalItem {
+  title: string;
+  severity: "low" | "medium" | "high" | "critical";
+  operator?: string | null;
+  department?: string | null;
+  estimated_exposure_mad?: number | null;
+  reason: string;
+}
+
+export interface ApiExecutiveReportOpportunityItem {
+  title: string;
+  estimated_saving_mad?: number | null;
+  justification: string;
+}
+
+export interface ApiExecutiveReportRecommendationItem {
+  title: string;
+  priority: "low" | "medium" | "high" | "critical";
+  justification: string;
+  action: string;
+  estimated_saving_mad?: number | null;
+}
+
+export interface ApiExecutiveReportChartPoint {
+  label: string;
+  value: number;
+  secondary_value?: number | null;
+}
+
+export interface ApiExecutiveReportCharts {
+  cost_evolution: ApiExecutiveReportChartPoint[];
+  department_risk: ApiExecutiveReportChartPoint[];
+  operator_costs: ApiExecutiveReportChartPoint[];
+  score_breakdown: ApiExecutiveReportChartPoint[];
+}
+
+export interface ApiExecutiveReportResponse {
+  executive_summary: string;
+  fleet_health_score: number;
+  fleet_health_level: "excellent" | "bon" | "moyen" | "critique";
+  risk_level: "low" | "medium" | "high" | "critical";
+  risk_score: number;
+  fraud_score: number;
+  optimization_score: number;
+  anomaly_score: number;
+  equipment_score: number;
+  critical_costs: ApiExecutiveReportCostItem[];
+  high_risk_departments: ApiExecutiveReportDepartmentItem[];
+  costly_operators: ApiExecutiveReportOperatorItem[];
+  major_anomalies: ApiExecutiveReportAnomalyItem[];
+  fraud_signals: ApiExecutiveReportFraudSignalItem[];
+  priority_risks: string[];
+  optimization_opportunities: ApiExecutiveReportOpportunityItem[];
+  top_recommendations: ApiExecutiveReportRecommendationItem[];
+  estimated_savings: string;
+  estimated_savings_mad: number;
+  multimodal_highlights: string[];
+  multimodal_analysis_count: number;
+  score_explanations: ApiExecutiveReportScoreExplanation[];
+  charts: ApiExecutiveReportCharts;
+  model: string;
+  sources: string[];
+  summary_updated_at: string;
+  cached: boolean;
+  fallback_used: boolean;
+  duration_ms: number | null;
+}
+
+export interface ApiExplainabilityExecutiveContext {
+  executive_summary: string;
+  fleet_health_score?: number | null;
+  risk_level?: "low" | "medium" | "high" | "critical" | null;
+  risk_score?: number | null;
+  fraud_score?: number | null;
+  optimization_score?: number | null;
+  anomaly_score?: number | null;
+  equipment_score?: number | null;
+  estimated_savings?: string | null;
+  critical_costs?: ApiExecutiveReportCostItem[];
+  high_risk_departments?: ApiExecutiveReportDepartmentItem[];
+  costly_operators?: ApiExecutiveReportOperatorItem[];
+  major_anomalies?: ApiExecutiveReportAnomalyItem[];
+  fraud_signals?: ApiExecutiveReportFraudSignalItem[];
+  priority_risks?: string[];
+  top_recommendations?: ApiExecutiveReportRecommendationItem[];
+  score_explanations?: ApiExecutiveReportScoreExplanation[];
+  sources?: string[];
+  summary_updated_at?: string | null;
+}
+
+export interface ApiExplainabilityRequest {
+  question: string;
+  focus_label?: string | null;
+  conversation_id?: string | null;
+  history?: ApiChatContextMessage[];
+  message_text?: string | null;
+  image_analysis?: ApiExecutiveReportImageContext | null;
+  executive_report?: ApiExplainabilityExecutiveContext | null;
+  use_live_context?: boolean;
+}
+
+export interface ApiExplainabilityFactor {
+  label: string;
+  category: string;
+  value: string;
+  impact_score: number;
+  severity: "low" | "medium" | "high" | "critical";
+  evidence: string;
+}
+
+export interface ApiExplainabilityCriticalZone {
+  label: string;
+  zone_type: string;
+  severity: "low" | "medium" | "high" | "critical";
+  detail: string;
+  value?: string | null;
+}
+
+export interface ApiExplainabilityGraphNode {
+  node_id: string;
+  label: string;
+  node_type: "signal" | "cause" | "decision" | "impact" | "zone";
+  severity: "low" | "medium" | "high" | "critical";
+  weight: number;
+}
+
+export interface ApiExplainabilityGraphEdge {
+  source: string;
+  target: string;
+  relation: string;
+}
+
+export interface ApiExplainabilityGraph {
+  summary: string;
+  dominant_factor?: string | null;
+  nodes: ApiExplainabilityGraphNode[];
+  edges: ApiExplainabilityGraphEdge[];
+}
+
+export interface ApiExplainabilityCharts {
+  factor_breakdown: ApiExecutiveReportChartPoint[];
+  risk_timeline: ApiExecutiveReportChartPoint[];
+  critical_zone_heatmap: ApiExecutiveReportChartPoint[];
+  score_radar: ApiExecutiveReportChartPoint[];
+}
+
+export interface ApiExplainabilityResponse {
+  answer: string;
+  confidence: number;
+  risk_level: "low" | "medium" | "high" | "critical";
+  reasoning: string[];
+  causes: string[];
+  influencing_factors: ApiExplainabilityFactor[];
+  explanation_graph: ApiExplainabilityGraph;
+  critical_zones: ApiExplainabilityCriticalZone[];
+  recommendations: string[];
+  data_points_used: string[];
+  confidence_score: number;
+  fraud_score: number;
+  anomaly_score: number;
+  optimization_score: number;
+  risk_score: number;
+  equipment_score: number;
+  charts: ApiExplainabilityCharts;
+  model: string;
+  sources: string[];
+  summary_updated_at: string;
+  cached: boolean;
+  fallback_used: boolean;
+  duration_ms: number | null;
+}
+
+export type ApiReportType =
+  | "executive"
+  | "anomalies"
+  | "fraud"
+  | "equipment"
+  | "workflow"
+  | "cost_optimization"
+  | "live"
+  | "complete";
+
+export interface ApiReportExportImage {
+  title: string;
+  src: string;
+  caption?: string | null;
+}
+
+export interface ApiReportGenerateRequest {
+  report_type: ApiReportType;
+  conversation_id?: string | null;
+  history?: ApiChatContextMessage[];
+  image_analyses?: ApiExecutiveReportImageContext[];
+  executive_report?: ApiExecutiveReportResponse | null;
+  explainability?: ApiExplainabilityResponse | null;
+  images?: ApiReportExportImage[];
+}
+
+export interface ApiReportGenerateResponse {
+  report_id: string;
+  pdf_url: string;
+  generated_at: string;
+  report_type: ApiReportType;
+  fleet_health_score: number;
+}
+
+export interface ApiHealthCheck {
+  status: "ok" | "degraded" | "error";
+  message: string;
+  details: Record<string, unknown>;
+}
+
+export interface ApiHealthResponse {
+  status: "ok" | "degraded" | "error";
+  app_name: string;
+  environment: string;
+  version: string;
+  timestamp: string;
+  checks: {
+    backend: ApiHealthCheck;
+    database: ApiHealthCheck;
+    ollama: ApiHealthCheck;
+    csv: ApiHealthCheck;
+    websocket: ApiHealthCheck;
+  };
+}
+
+export interface ApiLiveMonitoringStatus {
+  active: boolean;
+  mode: "simulation" | "hybrid";
+  monitoring_label: string;
+  connected_clients: number;
+  latest_tick: number;
+  latest_tick_at: string;
+  simulator_enabled: boolean;
+  websocket_path: string;
+}
+
+export interface ApiLiveAlert {
+  alert_id: string;
+  title: string;
+  severity: "low" | "medium" | "high" | "critical";
+  category: string;
+  message: string;
+  recommendation: string;
+  detected_at: string;
+  score: number;
+  department?: string | null;
+  operator?: string | null;
+  equipment_label?: string | null;
+  delta_pct?: number | null;
+  estimated_cost_mad?: number | null;
+}
+
+export interface ApiLiveDepartment {
+  department: string;
+  risk_score: number;
+  live_cost_mad: number;
+  delta_pct: number;
+  alert_count: number;
+  roaming_pct: number;
+}
+
+export interface ApiLiveOperator {
+  operator: string;
+  live_cost_mad: number;
+  anomaly_score: number;
+  roaming_cost_mad: number;
+  suspicious_calls: number;
+  delta_pct: number;
+}
+
+export interface ApiLiveEquipment {
+  label: string;
+  site?: string | null;
+  health_score: number;
+  temperature_c: number;
+  severity: "low" | "medium" | "high" | "critical";
+  issue: string;
+}
+
+export interface ApiLiveWorkflow {
+  name: string;
+  criticality_score: number;
+  waiting_steps: number;
+  bottleneck: string;
+}
+
+export interface ApiLiveChartPoint {
+  label: string;
+  value: number;
+  secondary_value?: number | null;
+}
+
+export interface ApiLiveMonitoringSnapshot {
+  generated_at: string;
+  tick: number;
+  mode: "simulation" | "hybrid";
+  active: boolean;
+  monitoring_label: string;
+  executive_summary: string;
+  fleet_health_score: number;
+  risk_score: number;
+  fraud_score: number;
+  optimization_score: number;
+  equipment_score: number;
+  live_cost_mad: number;
+  live_cost_delta_pct: number;
+  data_consumption_tb: number;
+  data_delta_pct: number;
+  roaming_cost_mad: number;
+  suspicious_calls: number;
+  fraud_exposure_mad: number;
+  overage_lines: number;
+  inactive_lines: number;
+  equipment_alerts: number;
+  workflow_critical_count: number;
+  operator_anomaly_count: number;
+  source_status: string[];
+  recommendations: string[];
+  priority_alerts: ApiLiveAlert[];
+  recent_alerts: ApiLiveAlert[];
+  top_departments: ApiLiveDepartment[];
+  top_operators: ApiLiveOperator[];
+  critical_equipments: ApiLiveEquipment[];
+  critical_workflows: ApiLiveWorkflow[];
+  cost_series: ApiLiveChartPoint[];
+  risk_series: ApiLiveChartPoint[];
+  alerts_series: ApiLiveChartPoint[];
+  operator_heatmap: ApiLiveChartPoint[];
+}
+
+export interface ApiChatStreamMeta {
+  model: string;
+  summary_updated_at: string;
+  sources: string[];
+}
+
+export interface ApiChatStreamCallbacks {
+  onMeta?: (meta: ApiChatStreamMeta) => void;
+  onToken?: (chunk: string) => void;
+  onDone?: (response: ApiChatResponse) => void;
+  onError?: (error: ApiChatErrorResponse) => void;
+  signal?: AbortSignal;
+}
+
+export interface ApiVoiceTranscriptionResponse {
+  success?: boolean;
+  text?: string;
+  transcript: string;
+  language: string;
+  confidence: number;
+  provider: string;
+  model: string;
+  duration_ms: number;
+  audio_duration_ms?: number | null;
+}
+
+export interface ApiVoiceSpeakResponse {
+  audio_url: string;
+  duration: number;
+  format: string;
+}
+
+export interface ApiVoiceRespondResponse extends ApiVoiceSpeakResponse {
+  transcript: string;
+  language: string;
+  confidence: number;
+  answer: string;
+  model: string;
+  sources: string[];
+  summary_updated_at: string;
+  cached: boolean;
+  fallback_used: boolean;
+  duration_ms: number | null;
+}
+
+export interface ApiVoiceRequest {
+  audio?: File | null;
+  transcript?: string | null;
+  conversation_id?: string | null;
+  history?: ApiChatContextMessage[];
+}
+
+export interface ApiVoiceStreamStage {
+  stage: "transcribing" | "thinking" | "speaking";
+  label: string;
+}
+
+export interface ApiVoiceStreamAudio {
+  audio_url: string;
+  duration: number;
+  format: string;
+}
+
+export interface ApiVoiceHealthResponse {
+  success?: boolean;
+  enabled: boolean;
+  ready: boolean;
+  status: "ready" | "disabled" | "degraded" | "unavailable";
+  provider: string;
+  model: string;
+  language: string;
+  device: string;
+  compute_type: string;
+  runtime_available: boolean;
+  model_loaded: boolean;
+  ffmpeg_available: boolean;
+  message: string;
+  details: Record<string, unknown>;
+}
+
+export interface ApiVoiceStreamCallbacks extends ApiChatStreamCallbacks {
+  onStage?: (stage: ApiVoiceStreamStage) => void;
+  onTranscript?: (transcript: ApiVoiceTranscriptionResponse) => void;
+  onAudio?: (audio: ApiVoiceStreamAudio) => void;
+  onVoiceError?: (error: ApiChatErrorResponse) => void;
+}
+
+export type ApiChatErrorCode =
+  | "AUTH_ERROR"
+  | "AUDIO_INVALID"
+  | "AUDIO_TOO_LARGE"
+  | "IMAGE_INVALID"
+  | "IMAGE_TOO_LARGE"
+  | "OLLAMA_OFFLINE"
+  | "NO_AUDIO_DETECTED"
+  | "OCR_UNAVAILABLE"
+  | "TRANSCRIPTION_UNAVAILABLE"
+  | "VOICE_STT_DISABLED"
+  | "VOICE_STT_UNAVAILABLE"
+  | "TIMEOUT"
+  | "TTS_UNAVAILABLE"
+  | "REQUEST_CANCELLED"
+  | "VISION_UNAVAILABLE"
+  | "MEMORY_ERROR"
+  | "MULTIPART_INVALID"
+  | "SERVER_ERROR"
+  | "NETWORK_ERROR";
+
+export interface ApiChatErrorResponse {
+  success?: boolean;
+  code: ApiChatErrorCode;
+  error_type?: string | null;
+  message: string;
+  fallback_answer?: string | null;
+  details?: Record<string, unknown> | null;
+}
+
 export interface VerifyResetCodePayload {
   reset_token: string;
   code: string;
@@ -1139,6 +2559,41 @@ export interface CdrAnalyticsQuery {
   department?: string;
   call_zone?: string;
   severity?: string;
+}
+
+export interface CdrRoamingMapQuery {
+  country?: string;
+  operator?: string;
+  department?: string;
+  risk_level?: ApiRoamingRiskLevel;
+  min_roaming_cost_mad?: number;
+  period_from?: string;
+  period_to?: string;
+}
+
+export interface CdrMapQuery {
+  mode?: "origins" | "destinations" | "flows";
+  scope?: "morocco" | "international" | "all";
+  operator?: string;
+  department?: string;
+  risk_level?: string;
+  fraud_severity?: string;
+  region?: string;
+  date_from?: string;
+  date_to?: string;
+}
+
+export interface RoamingIntelligenceQuery {
+  country?: string;
+  operator?: string;
+  department?: string;
+  risk_level?: ApiRoamingRiskLevel;
+  anomaly_type?: string;
+  min_cost_mad?: number;
+  period_from?: string;
+  period_to?: string;
+  roaming_active?: boolean;
+  fraud_only?: boolean;
 }
 
 export interface MobileFleetQuery {
@@ -1176,18 +2631,373 @@ interface RequestOptions extends RequestInit {
 export class ApiError extends Error {
   status: number;
   details: unknown;
+  code: string | null;
 
-  constructor(message: string, status: number, details: unknown) {
+  constructor(message: string, status: number, details: unknown, code: string | null = null) {
     super(message);
     this.name = "ApiError";
     this.status = status;
     this.details = details;
+    this.code = code;
   }
 }
 
+function isAbortLikeError(error: unknown): boolean {
+  if (error instanceof DOMException && error.name === "AbortError") {
+    return true;
+  }
+
+  return error instanceof Error && error.name === "AbortError";
+}
+
+function createAbortError(message = "Réponse interrompue."): DOMException {
+  return new DOMException(message, "AbortError");
+}
+
+export interface ApiExplainRecommendationRequest {
+  recommendation_title: string;
+  conversation_id?: string | null;
+  history?: ApiChatContextMessage[];
+  image_analysis?: ApiExecutiveReportImageContext | null;
+  executive_report?: ApiExplainabilityExecutiveContext | null;
+  use_live_context?: boolean;
+}
+
+export interface ApiExplainRecommendationFactor {
+  label: string;
+  category: string;
+  value: string;
+  impact_score: number;
+  severity: "low" | "medium" | "high" | "critical";
+  evidence: string;
+  weight: number;
+}
+
+export interface ApiExplainRecommendationDecisionStep {
+  step_number: number;
+  step_title: string;
+  step_description: string;
+  data_used: string[];
+  confidence: number;
+}
+
+export interface ApiExplainRecommendationSupportingKpi {
+  label: string;
+  value: string;
+  unit?: string | null;
+  impact: string;
+  confidence: number;
+}
+
+export interface ApiExplainRecommendationReasoning {
+  factors: string[];
+  kpis: string[];
+  risks: string[];
+  impact: string;
+  business_explanation: string;
+}
+
+export interface ApiExplainRecommendationResponse {
+  recommendation: string;
+  answer: string;
+  reasoning: ApiExplainRecommendationReasoning;
+  confidence_score: number;
+  estimated_savings?: string | null;
+  risk_level: "low" | "medium" | "high" | "critical";
+  impact_score: number;
+  risk_score: number;
+  fraud_score: number;
+  anomaly_score: number;
+  optimization_score: number;
+  equipment_score: number;
+  supporting_kpis: ApiExplainRecommendationSupportingKpi[];
+  influencing_factors: ApiExplainRecommendationFactor[];
+  decision_trace: ApiExplainRecommendationDecisionStep[];
+  explanation_graph: ApiExplainabilityGraph;
+  critical_zones: ApiExplainabilityCriticalZone[];
+  alternative_recommendations: string[];
+  data_points_used: string[];
+  model: string;
+  sources: string[];
+  summary_updated_at: string;
+  cached: boolean;
+  fallback_used: boolean;
+  duration_ms: number | null;
+}
+
+function extractApiError(
+  payload: unknown,
+  fallbackMessage: string,
+  fallbackCode: string,
+): { message: string; code: string } {
+  if (typeof payload === "object" && payload !== null) {
+    if (
+      "success" in payload &&
+      payload.success === false &&
+      "code" in payload &&
+      typeof payload.code === "string" &&
+      "message" in payload &&
+      typeof payload.message === "string"
+    ) {
+      return {
+        code: payload.code,
+        message: payload.message,
+      };
+    }
+
+    if (
+      "error" in payload &&
+      typeof payload.error === "string" &&
+      "message" in payload &&
+      typeof payload.message === "string"
+    ) {
+      return {
+        code: payload.error,
+        message: payload.message,
+      };
+    }
+
+    if (
+      "code" in payload &&
+      typeof payload.code === "string" &&
+      "message" in payload &&
+      typeof payload.message === "string"
+    ) {
+      return {
+        code: payload.code,
+        message: payload.message,
+      };
+    }
+
+    if (
+      "error_type" in payload &&
+      typeof payload.error_type === "string" &&
+      "message" in payload &&
+      typeof payload.message === "string"
+    ) {
+      return {
+        code: payload.error_type.toUpperCase(),
+        message: payload.message,
+      };
+    }
+
+    if ("detail" in payload) {
+      const detail = payload.detail;
+      if (typeof detail === "string" && detail.trim() !== "") {
+        if (
+          detail === "Internal server error" ||
+          detail === "Backend request failed"
+        ) {
+          return {
+            code: fallbackCode,
+            message: fallbackMessage,
+          };
+        }
+
+        return {
+          code: fallbackCode,
+          message: detail,
+        };
+      }
+
+      if (
+        typeof detail === "object" &&
+        detail !== null &&
+        "code" in detail &&
+        typeof detail.code === "string" &&
+        "message" in detail &&
+        typeof detail.message === "string"
+      ) {
+        return {
+          code: detail.code,
+          message: detail.message,
+        };
+      }
+    }
+  }
+
+  if (typeof payload === "string" && payload.trim() !== "") {
+    if (payload === "Internal server error" || payload === "Backend request failed") {
+      return {
+        code: fallbackCode,
+        message: fallbackMessage,
+      };
+    }
+
+    return {
+      code: fallbackCode,
+      message: payload,
+    };
+  }
+
+  return {
+    code: fallbackCode,
+    message: fallbackMessage,
+  };
+}
+
+function resolveDefaultApiBaseUrl(): string {
+  return import.meta.env.DEV ? "/api/v1" : "http://localhost:8000/api/v1";
+}
+
 const API_BASE_URL =
-  (import.meta.env.VITE_API_URL as string | undefined)?.replace(/\/$/, "") ??
-  "http://127.0.0.1:8000/api/v1";
+  ((import.meta.env.VITE_API_URL as string | undefined)?.trim() || resolveDefaultApiBaseUrl()).replace(
+    /\/$/,
+    "",
+  );
+const ENABLE_DEBUG_LOGS = import.meta.env.DEV;
+
+function resolveApiUrl(path: string): string {
+  const normalizedPath = path.startsWith("/") ? path : `/${path}`;
+  return `${API_BASE_URL}${normalizedPath}`;
+}
+
+function logInfrastructureEvent(
+  event: string,
+  payload: Record<string, unknown>,
+  level: "debug" | "info" | "warn" | "error" = "info",
+): void {
+  if (!ENABLE_DEBUG_LOGS) {
+    return;
+  }
+  console[level](`[infra] ${event}`, payload);
+}
+
+function resolveAccessToken(token: string | null | undefined): string | null {
+  return token ?? readStoredSession()?.accessToken ?? null;
+}
+
+function describeUnknownError(error: unknown): string {
+  if (error instanceof Error) {
+    return error.message;
+  }
+
+  return typeof error === "string" ? error : "Unknown error";
+}
+
+function buildBackendUnavailableError(requestUrl: string, error: unknown) {
+  logInfrastructureEvent(
+    "BACKEND_OFFLINE",
+    {
+      requestUrl,
+      error: describeUnknownError(error),
+    },
+    "error",
+  );
+
+  emitApiErrorEvent({
+    title: "Backend indisponible",
+    message:
+      "Connexion backend impossible. Verifiez que l'API est demarree et accessible depuis l'application.",
+    status: 0,
+    code: "NETWORK_ERROR",
+    level: "error",
+  });
+
+  return new ApiError(
+    "Connexion backend impossible. Verifiez que l'API est demarree et accessible depuis l'application.",
+    0,
+    error,
+    "NETWORK_ERROR",
+  );
+}
+
+function handleAuthFailure(
+  payload: unknown,
+  status: number,
+  shouldClearSession = false,
+): never {
+  if (status === 401) {
+    if (shouldClearSession) {
+      clearStoredSession();
+    }
+
+    const errorInfo = extractApiError(
+      payload,
+      "Session expiree. Reconnectez-vous puis reessayez.",
+      "AUTH_ERROR",
+    );
+    emitApiErrorEvent({
+      title: "Session expiree",
+      message: errorInfo.message,
+      status,
+      code: errorInfo.code || "AUTH_ERROR",
+      level: "warning",
+    });
+
+    throw new ApiError(
+      errorInfo.message,
+      status,
+      payload,
+      errorInfo.code || "AUTH_ERROR",
+    );
+  }
+
+  const errorInfo = extractApiError(
+    payload,
+    "Acces refuse a cette ressource.",
+    "FORBIDDEN",
+  );
+  emitApiErrorEvent({
+    title: "Acces refuse",
+    message: errorInfo.message,
+    status,
+    code: errorInfo.code || "FORBIDDEN",
+    level: "warning",
+  });
+
+  throw new ApiError(
+    errorInfo.message,
+    status,
+    payload,
+    errorInfo.code || "FORBIDDEN",
+  );
+}
+
+function describeFormDataValue(value: FormDataEntryValue) {
+  if (typeof value === "string") {
+    return {
+      kind: "text",
+      length: value.length,
+      preview: value.slice(0, 120),
+    };
+  }
+
+  return {
+    kind: "file",
+    name: value.name,
+    mimeType: value.type,
+    size: value.size,
+  };
+}
+
+function debugFormData(label: string, formData: FormData): void {
+  if (!ENABLE_DEBUG_LOGS) {
+    return;
+  }
+  console.debug(label, {
+    contentTypeManagedByBrowser: true,
+    entries: Array.from(formData.entries(), ([key, value]) => ({
+      key,
+      ...describeFormDataValue(value),
+    })),
+  });
+}
+
+function buildWebSocketUrl(path: string): string {
+  const normalizedPath = path.startsWith("/") ? path : `/${path}`;
+
+  if (/^https?:\/\//i.test(API_BASE_URL)) {
+    return `${API_BASE_URL.replace(/^http/i, "ws")}${normalizedPath}`;
+  }
+
+  const protocol =
+    typeof window !== "undefined" && window.location.protocol === "https:" ? "wss" : "ws";
+  const host = typeof window !== "undefined" ? window.location.host : "localhost";
+  const basePath = API_BASE_URL.startsWith("/") ? API_BASE_URL : `/${API_BASE_URL}`;
+
+  return `${protocol}://${host}${basePath}${normalizedPath}`;
+}
 
 let refreshPromise: Promise<string | null> | null = null;
 
@@ -1250,11 +3060,22 @@ async function tryRefreshAccessToken(): Promise<string | null> {
     const session = readStoredSession();
     if (!session?.refreshToken) {
       clearStoredSession();
+      logInfrastructureEvent(
+        "JWT_REFRESH",
+        { refreshed: false, reason: "missing_refresh_token" },
+        "warn",
+      );
       return null;
     }
 
+    const refreshUrl = resolveApiUrl("/auth/refresh");
+
     try {
-      const response = await fetch(`${API_BASE_URL}/auth/refresh`, {
+      logInfrastructureEvent("JWT_REFRESH", {
+        endpoint: "/auth/refresh",
+        phase: "started",
+      });
+      const response = await fetch(refreshUrl, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -1267,6 +3088,16 @@ async function tryRefreshAccessToken(): Promise<string | null> {
         if (response.status === 401 || response.status === 403) {
           clearStoredSession();
         }
+
+        logInfrastructureEvent(
+          "JWT_REFRESH",
+          {
+            endpoint: "/auth/refresh",
+            phase: "failed",
+            status: response.status,
+          },
+          response.status === 401 || response.status === 403 ? "warn" : "error",
+        );
         return null;
       }
 
@@ -1280,8 +3111,26 @@ async function tryRefreshAccessToken(): Promise<string | null> {
         hasPersistentSession(),
       );
 
+      logInfrastructureEvent(
+        "JWT_REFRESH",
+        {
+          endpoint: "/auth/refresh",
+          phase: "completed",
+          status: response.status,
+        },
+        "info",
+      );
       return refreshedSession.access_token;
-    } catch {
+    } catch (error) {
+      logInfrastructureEvent(
+        "JWT_REFRESH",
+        {
+          endpoint: "/auth/refresh",
+          phase: "failed",
+          error: describeUnknownError(error),
+        },
+        "warn",
+      );
       return null;
     }
   })();
@@ -1299,25 +3148,46 @@ async function request<T>(
   allowRefresh = true,
 ): Promise<T> {
   const { token, headers, body, ...rest } = options;
+  const resolvedToken = resolveAccessToken(token);
+  const requestUrl = resolveApiUrl(path);
   let response: Response;
+  const startedAt = performance.now();
+  if (ENABLE_DEBUG_LOGS) {
+    console.debug("[api] request_started", {
+      request: `${options.method ?? "GET"} ${path}`,
+      requestUrl,
+      hasToken: Boolean(resolvedToken),
+      isFormData: body instanceof FormData,
+    });
+  }
 
   try {
-    response = await fetch(`${API_BASE_URL}${path}`, {
+    response = await fetch(requestUrl, {
       ...rest,
       body,
-      headers: buildHeaders(headers, token, body),
+      headers: buildHeaders(headers, resolvedToken, body),
     });
   } catch (error) {
-    throw new ApiError(
-      "Connexion backend impossible. Verifiez que l'API est demarree et accessible depuis l'application.",
-      0,
-      error,
-    );
+    if (isAbortLikeError(error)) {
+      throw error;
+    }
+
+    throw buildBackendUnavailableError(requestUrl, error);
   }
 
   const payload = await parsePayload(response);
+  const requestLabel = `${options.method ?? "GET"} ${path}`;
+  if (ENABLE_DEBUG_LOGS) {
+    console.debug("[api] response_received", {
+      request: requestLabel,
+      status: response.status,
+      ok: response.ok,
+      durationMs: Math.round(performance.now() - startedAt),
+      responseContentType: response.headers.get("content-type"),
+    });
+  }
 
-  if (response.status === 401 && token && allowRefresh) {
+  if (response.status === 401 && resolvedToken && allowRefresh) {
     const refreshedToken = await tryRefreshAccessToken();
     if (refreshedToken) {
       return request<T>(path, { ...options, token: refreshedToken }, false);
@@ -1325,24 +3195,101 @@ async function request<T>(
   }
 
   if (!response.ok) {
-    const message =
-      typeof payload === "object" &&
-      payload !== null &&
-      "detail" in payload &&
-      typeof payload.detail === "string"
-        ? payload.detail
-        : typeof payload === "string"
-          ? payload
-          : "Backend request failed";
-    throw new ApiError(message, response.status, payload);
+    if (response.status === 401 || response.status === 403) {
+      handleAuthFailure(payload, response.status, Boolean(resolvedToken));
+    }
+
+    const errorInfo = extractApiError(
+      payload,
+      "Une erreur est survenue cote serveur.",
+      "SERVER_ERROR",
+    );
+    throw new ApiError(errorInfo.message, response.status, payload, errorInfo.code);
   }
 
   return payload as T;
 }
 
+async function requestBlob(
+  path: string,
+  options: RequestOptions = {},
+  allowRefresh = true,
+): Promise<Blob> {
+  const { token, headers, body, ...rest } = options;
+  const resolvedToken = resolveAccessToken(token);
+  const requestUrl = resolveApiUrl(path);
+  let response: Response;
+  const startedAt = performance.now();
+  const requestLabel = `${options.method ?? "GET"} ${path}`;
+  if (ENABLE_DEBUG_LOGS) {
+    console.debug("[api] request_started", {
+      request: requestLabel,
+      requestUrl,
+      hasToken: Boolean(resolvedToken),
+      isFormData: body instanceof FormData,
+      responseType: "blob",
+    });
+  }
+
+  try {
+    response = await fetch(requestUrl, {
+      ...rest,
+      body,
+      headers: buildHeaders(headers, resolvedToken, body),
+    });
+  } catch (error) {
+    if (isAbortLikeError(error)) {
+      throw error;
+    }
+
+    throw buildBackendUnavailableError(requestUrl, error);
+  }
+
+  if (ENABLE_DEBUG_LOGS) {
+    console.debug("[api] response_received", {
+      request: requestLabel,
+      status: response.status,
+      ok: response.ok,
+      durationMs: Math.round(performance.now() - startedAt),
+      responseType: "blob",
+      responseContentType: response.headers.get("content-type"),
+    });
+  }
+
+  if (response.status === 401 && resolvedToken && allowRefresh) {
+    const refreshedToken = await tryRefreshAccessToken();
+    if (refreshedToken) {
+      return requestBlob(path, { ...options, token: refreshedToken }, false);
+    }
+  }
+
+  if (!response.ok) {
+    const payload = await parsePayload(response);
+
+    if (response.status === 401 || response.status === 403) {
+      handleAuthFailure(payload, response.status, Boolean(resolvedToken));
+    }
+
+    const errorInfo = extractApiError(
+      payload,
+      "Une erreur est survenue cote serveur.",
+      "SERVER_ERROR",
+    );
+    throw new ApiError(errorInfo.message, response.status, payload, errorInfo.code);
+  }
+
+  return response.blob();
+}
+
 export const authApi = {
   login(payload: LoginPayload) {
     return request<AuthResponse>("/auth/login", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
+  },
+  adminLogin(payload: LoginPayload) {
+    return request<AuthResponse>("/auth/admin/login", {
       method: "POST",
       body: JSON.stringify(payload),
     });
@@ -1376,6 +3323,12 @@ export const authApi = {
   },
 };
 
+export const healthApi = {
+  get() {
+    return request<ApiHealthResponse>("/health");
+  },
+};
+
 export const oauthApi = {
   googleLoginUrl() {
     return `${API_BASE_URL}/auth/google/login`;
@@ -1385,6 +3338,779 @@ export const oauthApi = {
   },
   providers() {
     return request<ApiOAuthProvidersStatus>("/auth/oauth/providers");
+  },
+};
+
+export const companyRegistrationApi = {
+  submit(formData: FormData) {
+    return request<ApiCompanyRegistrationSubmitResponse>("/company-registration/request", {
+      method: "POST",
+      body: formData,
+    });
+  },
+  checkEligibility(email: string) {
+    return request<ApiCompanyRegistrationEmailEligibility>(
+      `/company-registration/request-eligibility${buildQueryString({ email })}`,
+    );
+  },
+  overview(token: string) {
+    return request<ApiCompanyRegistrationOverview>("/admin/company-registration/overview", {
+      token,
+    });
+  },
+  list(
+    token: string,
+    params?: {
+      offset?: number;
+      limit?: number;
+      status?: ApiCompanyRegistrationStatus | "all";
+      search?: string;
+      include_deleted?: boolean;
+      deleted_only?: boolean;
+    },
+  ) {
+    const normalizedParams = {
+      ...params,
+      status: params?.status === "all" ? undefined : params?.status,
+    };
+    return request<ApiCompanyRegistrationListResponse>(
+      `/admin/company-registration/requests${buildQueryString(normalizedParams)}`,
+      { token },
+    );
+  },
+  get(token: string, requestId: number) {
+    return request<ApiCompanyRegistrationDetail>(
+      `/admin/company-registration/requests/${requestId}`,
+      { token },
+    );
+  },
+  approve(token: string, requestId: number) {
+    return request<ApiCompanyRegistrationActionResponse>(
+      `/admin/company-registration/requests/${requestId}/approve`,
+      {
+        method: "PATCH",
+        token,
+      },
+    );
+  },
+  reopen(token: string, requestId: number, reason: string) {
+    return request<ApiCompanyRegistrationActionResponse>(
+      `/admin/company-registration/requests/${requestId}/reopen`,
+      {
+        method: "PATCH",
+        token,
+        body: JSON.stringify({ reason }),
+      },
+    );
+  },
+  reject(token: string, requestId: number, rejectionReason: string) {
+    return request<ApiCompanyRegistrationActionResponse>(
+      `/admin/company-registration/requests/${requestId}/reject`,
+      {
+        method: "POST",
+        token,
+        body: JSON.stringify({ rejection_reason: rejectionReason }),
+      },
+    );
+  },
+  delete(token: string, requestId: number, payload?: { force?: boolean; reason?: string }) {
+    return request<ApiCompanyRegistrationActionResponse>(
+      `/admin/company-registration/requests/${requestId}/delete`,
+      {
+        method: "PATCH",
+        token,
+        body: JSON.stringify({
+          force: payload?.force ?? false,
+          reason: payload?.reason ?? null,
+        }),
+      },
+    );
+  },
+  restore(token: string, requestId: number, payload?: { reason?: string }) {
+    return request<ApiCompanyRegistrationActionResponse>(
+      `/admin/company-registration/requests/${requestId}/restore`,
+      {
+        method: "PATCH",
+        token,
+        body: JSON.stringify({
+          reason: payload?.reason ?? null,
+        }),
+      },
+    );
+  },
+  requestInformation(token: string, requestId: number, comment: string) {
+    return request<ApiCompanyRegistrationActionResponse>(
+      `/admin/company-registration/requests/${requestId}/request-information`,
+      {
+        method: "POST",
+        token,
+        body: JSON.stringify({ comment }),
+      },
+    );
+  },
+  downloadDocument(token: string, requestId: number, documentKey: string) {
+    return requestBlob(
+      `/admin/company-registration/requests/${requestId}/documents/${encodeURIComponent(documentKey)}`,
+      {
+        token,
+      },
+    );
+  },
+  listCompanies(
+    token: string,
+    params?: {
+      offset?: number;
+      limit?: number;
+      search?: string;
+      status?: ApiCompanyLifecycleStatus;
+      sort_by?: "date" | "company" | "status";
+      sort_order?: "asc" | "desc";
+    },
+  ) {
+    return request<ApiCompanyListResponse>(`/admin/companies${buildQueryString(params)}`, {
+      token,
+    });
+  },
+  companyDashboard(token: string, companyId: number) {
+    return request<ApiCompanyDashboard>(`/admin/companies/${companyId}/dashboard`, {
+      token,
+    });
+  },
+  auditLogs(
+    token: string,
+    params?: {
+      offset?: number;
+      limit?: number;
+      action?: string;
+      search?: string;
+    },
+  ) {
+    return request<ApiCompanyAuditLogListResponse>(
+      `/admin/company-registration/audit-logs${buildQueryString(params)}`,
+      { token },
+    );
+  },
+};
+
+export const invitationsApi = {
+  validate(token: string) {
+    return request<InvitationValidationResponse>(
+      `/invitations/validate${buildQueryString({ token })}`,
+    );
+  },
+  accept(payload: AcceptInvitationPayload) {
+    return request<AcceptInvitationResponse>("/invitations/accept", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
+  },
+};
+
+export const chatApi = {
+  ask(token: string, payload: ApiChatRequest) {
+    return request<ApiChatResponse>("/chat", {
+      method: "POST",
+      token,
+      body: JSON.stringify(payload),
+    });
+  },
+  generateCopilotActionPlan(
+    token: string,
+    payload: { history?: ApiChatContextMessage[] } = {},
+    signal?: AbortSignal,
+  ) {
+    return request<ApiChatActionPlanResponse>("/chat/copilot/actions", {
+      method: "POST",
+      token,
+      signal,
+      body: JSON.stringify(payload),
+    });
+  },
+  askWithImage(
+    token: string,
+    payload: ApiChatRequest & { image: File },
+    signal?: AbortSignal,
+  ) {
+    const formData = new FormData();
+    formData.append("image", payload.image);
+    formData.append("question", payload.question);
+    formData.append("analysis_mode", payload.analysis_mode ?? "quick");
+    if (payload.conversation_id) {
+      formData.append("conversation_id", payload.conversation_id);
+    }
+    formData.append("history_json", JSON.stringify(payload.history ?? []));
+    console.debug("[chatbot] image_formdata_prepared", {
+      endpoint: "/chat/image",
+      questionLength: payload.question.length,
+      conversationId: payload.conversation_id ?? null,
+      historySize: payload.history?.length ?? 0,
+      imageName: payload.image.name,
+      imageType: payload.image.type,
+      imageSize: payload.image.size,
+      analysisMode: payload.analysis_mode ?? "quick",
+      signalAborted: signal?.aborted ?? false,
+    });
+
+    return request<ApiChatImageResponse>("/chat/image", {
+      method: "POST",
+      token,
+      body: formData,
+      signal,
+    });
+  },
+  askWithDocument(
+    token: string,
+    payload: ApiChatRequest & { document: File },
+    signal?: AbortSignal,
+  ) {
+    const formData = new FormData();
+    formData.append("document", payload.document);
+    formData.append("question", payload.question);
+    formData.append("analysis_mode", payload.analysis_mode ?? "advanced");
+    if (payload.conversation_id) {
+      formData.append("conversation_id", payload.conversation_id);
+    }
+    formData.append("history_json", JSON.stringify(payload.history ?? []));
+
+    return request<ApiChatImageResponse>("/chat/upload-document", {
+      method: "POST",
+      token,
+      body: formData,
+      signal,
+    });
+  },
+  askWithPdf(
+    token: string,
+    payload: ApiChatRequest & { pdf: File },
+    signal?: AbortSignal,
+  ) {
+    return this.askWithDocument(
+      token,
+      {
+        ...payload,
+        document: payload.pdf,
+      },
+      signal,
+    );
+  },
+  generateExecutiveReport(
+    token: string,
+    payload: ApiExecutiveReportRequest,
+    signal?: AbortSignal,
+  ) {
+    return request<ApiExecutiveReportResponse>("/chat/executive-report", {
+      method: "POST",
+      token,
+      body: JSON.stringify(payload),
+      signal,
+    });
+  },
+  explain(
+    token: string,
+    payload: ApiExplainabilityRequest,
+    signal?: AbortSignal,
+  ) {
+    return request<ApiExplainabilityResponse>("/chat/explain", {
+      method: "POST",
+      token,
+      body: JSON.stringify(payload),
+      signal,
+    });
+  },
+  explainRecommendation(
+    token: string,
+    payload: ApiExplainRecommendationRequest,
+    signal?: AbortSignal,
+  ) {
+    return request<ApiExplainRecommendationResponse>("/chat/explain-recommendation", {
+      method: "POST",
+      token,
+      body: JSON.stringify(payload),
+      signal,
+    });
+  },
+  transcribeVoice(
+    token: string,
+    audioFile: File,
+    signal?: AbortSignal,
+  ) {
+    const formData = new FormData();
+    formData.append("audio", audioFile);
+    debugFormData("[api] voice_transcribe_formdata_prepared", formData);
+    if (ENABLE_DEBUG_LOGS) {
+      console.debug("[chatbot] voice_formdata_prepared", {
+        endpoint: "/chat/voice/transcribe",
+        audioName: audioFile.name,
+        audioType: audioFile.type,
+        audioSize: audioFile.size,
+        signalAborted: signal?.aborted ?? false,
+        contentTypeManagedByBrowser: true,
+      });
+    }
+
+    return request<ApiVoiceTranscriptionResponse>("/chat/voice/transcribe", {
+      method: "POST",
+      token,
+      body: formData,
+      signal,
+    });
+  },
+  voiceHealth(token: string) {
+    return request<ApiVoiceHealthResponse>("/chat/voice/health", {
+      token,
+    });
+  },
+  speakVoice(
+    token: string,
+    text: string,
+    signal?: AbortSignal,
+  ) {
+    if (ENABLE_DEBUG_LOGS) {
+      console.debug("[chatbot] voice_speak_payload", {
+        endpoint: "/chat/voice/speak",
+        textChars: text.length,
+        signalAborted: signal?.aborted ?? false,
+      });
+    }
+
+    return request<ApiVoiceSpeakResponse>("/chat/voice/speak", {
+      method: "POST",
+      token,
+      body: JSON.stringify({ text }),
+      signal,
+    });
+  },
+  respondVoice(
+    token: string,
+    payload: ApiVoiceRequest,
+    signal?: AbortSignal,
+  ) {
+    const formData = new FormData();
+    if (payload.audio) {
+      formData.append("audio", payload.audio);
+    }
+    if (payload.transcript?.trim()) {
+      formData.append("transcript", payload.transcript.trim());
+    }
+    if (payload.conversation_id) {
+      formData.append("conversation_id", payload.conversation_id);
+    }
+    formData.append("history_json", JSON.stringify(payload.history ?? []));
+    debugFormData("[api] voice_respond_formdata_prepared", formData);
+
+    return request<ApiVoiceRespondResponse>("/chat/voice/respond", {
+      method: "POST",
+      token,
+      body: formData,
+      signal,
+    });
+  },
+  async streamVoice(
+    token: string,
+    payload: ApiVoiceRequest,
+    callbacks: ApiVoiceStreamCallbacks = {},
+    allowRefresh = true,
+  ) {
+    if (callbacks.signal?.aborted) {
+      throw createAbortError();
+    }
+
+    const formData = new FormData();
+    if (payload.audio) {
+      formData.append("audio", payload.audio);
+    }
+    if (payload.transcript?.trim()) {
+      formData.append("transcript", payload.transcript.trim());
+    }
+    if (payload.conversation_id) {
+      formData.append("conversation_id", payload.conversation_id);
+    }
+    formData.append("history_json", JSON.stringify(payload.history ?? []));
+    debugFormData("[api] voice_stream_formdata_prepared", formData);
+    const resolvedToken = resolveAccessToken(token);
+    const requestUrl = resolveApiUrl("/chat/voice/stream");
+
+    const response = await fetch(requestUrl, {
+      method: "POST",
+      body: formData,
+      headers: buildHeaders(undefined, resolvedToken, formData),
+      signal: callbacks.signal,
+    }).catch((error) => {
+      if (isAbortLikeError(error)) {
+        throw error;
+      }
+
+      throw buildBackendUnavailableError(requestUrl, error);
+    });
+
+    if (response.status === 401 && resolvedToken && allowRefresh) {
+      const refreshedToken = await tryRefreshAccessToken();
+      if (refreshedToken) {
+        return chatApi.streamVoice(refreshedToken, payload, callbacks, false);
+      }
+    }
+
+    if (!response.ok) {
+      const payloadError = await parsePayload(response);
+      if (response.status === 401 || response.status === 403) {
+        handleAuthFailure(payloadError, response.status, Boolean(resolvedToken));
+      }
+
+      const errorInfo = extractApiError(
+        payloadError,
+        "Une erreur est survenue cote serveur.",
+        "SERVER_ERROR",
+      );
+      throw new ApiError(errorInfo.message, response.status, payloadError, errorInfo.code);
+    }
+
+    const reader = response.body?.getReader();
+    if (!reader) {
+      throw new ApiError(
+        "Le streaming vocal est indisponible sur ce navigateur.",
+        response.status,
+        null,
+        "SERVER_ERROR",
+      );
+    }
+
+    const decoder = new TextDecoder();
+    let buffer = "";
+    let finalResponse: ApiChatResponse | null = null;
+    let streamError: ApiChatErrorResponse | null = null;
+    let lastAudio: ApiVoiceStreamAudio | null = null;
+
+    const handleEventBlock = (eventBlock: string) => {
+      const trimmedBlock = eventBlock.trim();
+      if (!trimmedBlock) {
+        return;
+      }
+
+      const lines = trimmedBlock.split(/\r?\n/);
+      let eventName = "message";
+      const dataLines: string[] = [];
+
+      lines.forEach((line) => {
+        if (line.startsWith("event:")) {
+          eventName = line.slice(6).trim() || "message";
+          return;
+        }
+
+        if (line.startsWith("data:")) {
+          dataLines.push(line.slice(5).trimStart());
+        }
+      });
+
+      const rawData = dataLines.join("\n");
+      const parsedData = rawData ? JSON.parse(rawData) : null;
+
+      if (eventName === "stage" && parsedData) {
+        callbacks.onStage?.(parsedData as ApiVoiceStreamStage);
+        return;
+      }
+
+      if (eventName === "transcript" && parsedData) {
+        callbacks.onTranscript?.(parsedData as ApiVoiceTranscriptionResponse);
+        return;
+      }
+
+      if (eventName === "audio" && parsedData) {
+        lastAudio = parsedData as ApiVoiceStreamAudio;
+        callbacks.onAudio?.(lastAudio);
+        return;
+      }
+
+      if (eventName === "voice_error") {
+        const errorInfo = extractApiError(
+          parsedData,
+          "Lecture audio indisponible.",
+          "TTS_UNAVAILABLE",
+        );
+        callbacks.onVoiceError?.(errorInfo as ApiChatErrorResponse);
+        return;
+      }
+
+      if (eventName === "meta" && parsedData) {
+        callbacks.onMeta?.(parsedData as ApiChatStreamMeta);
+        return;
+      }
+
+      if (eventName === "token" && parsedData && typeof parsedData.text === "string") {
+        callbacks.onToken?.(parsedData.text);
+        return;
+      }
+
+      if (eventName === "done" && parsedData) {
+        finalResponse = parsedData as ApiChatResponse;
+        callbacks.onDone?.(finalResponse);
+        return;
+      }
+
+      if (eventName === "error") {
+        const errorInfo = extractApiError(
+          parsedData,
+          "Une erreur est survenue cote serveur.",
+          "SERVER_ERROR",
+        );
+        streamError = errorInfo;
+        callbacks.onError?.(errorInfo as ApiChatErrorResponse);
+      }
+    };
+
+    try {
+      while (true) {
+        const { done, value } = await reader.read();
+        buffer += decoder.decode(value ?? new Uint8Array(), { stream: !done });
+
+        let separatorIndex = buffer.indexOf("\n\n");
+        while (separatorIndex >= 0) {
+          const eventBlock = buffer.slice(0, separatorIndex);
+          buffer = buffer.slice(separatorIndex + 2);
+          handleEventBlock(eventBlock);
+          separatorIndex = buffer.indexOf("\n\n");
+        }
+
+        if (done) {
+          break;
+        }
+      }
+    } catch (error) {
+      if (isAbortLikeError(error)) {
+        throw error;
+      }
+
+      throw error;
+    }
+
+    const trailingBlock = buffer.trim();
+    if (trailingBlock) {
+      handleEventBlock(trailingBlock);
+    }
+
+    if (streamError) {
+      throw new ApiError(streamError.message, response.status, streamError, streamError.code);
+    }
+
+    if (!finalResponse) {
+      if (callbacks.signal?.aborted) {
+        throw createAbortError();
+      }
+
+      throw new ApiError(
+        "Une erreur est survenue cote serveur.",
+        response.status,
+        null,
+        "SERVER_ERROR",
+      );
+    }
+
+    return {
+      response: finalResponse,
+      audio: lastAudio,
+    };
+  },
+  async stream(
+    token: string,
+    payload: ApiChatRequest,
+    callbacks: ApiChatStreamCallbacks = {},
+    allowRefresh = true,
+  ) {
+    if (callbacks.signal?.aborted) {
+      throw createAbortError();
+    }
+
+    const resolvedToken = resolveAccessToken(token);
+    const requestUrl = resolveApiUrl("/chat/stream");
+
+    const response = await fetch(requestUrl, {
+      method: "POST",
+      body: JSON.stringify(payload),
+      headers: buildHeaders(undefined, resolvedToken, JSON.stringify(payload)),
+      signal: callbacks.signal,
+    }).catch((error) => {
+      if (isAbortLikeError(error)) {
+        throw error;
+      }
+
+      throw buildBackendUnavailableError(requestUrl, error);
+    });
+
+    if (response.status === 401 && resolvedToken && allowRefresh) {
+      const refreshedToken = await tryRefreshAccessToken();
+      if (refreshedToken) {
+        return chatApi.stream(refreshedToken, payload, callbacks, false);
+      }
+    }
+
+    if (!response.ok) {
+      const payloadValue = await parsePayload(response);
+      if (response.status === 401 || response.status === 403) {
+        handleAuthFailure(payloadValue, response.status, Boolean(resolvedToken));
+      }
+
+      const errorInfo = extractApiError(
+        payloadValue,
+        "Une erreur est survenue cote serveur.",
+        "SERVER_ERROR",
+      );
+      throw new ApiError(errorInfo.message, response.status, payloadValue, errorInfo.code);
+    }
+
+    if (!response.body) {
+      throw new ApiError(
+        "Une erreur est survenue cote serveur.",
+        response.status,
+        null,
+        "SERVER_ERROR",
+      );
+    }
+
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = "";
+    let finalResponse: ApiChatResponse | null = null;
+    let streamError: ApiChatErrorResponse | null = null;
+
+    const handleEventBlock = (eventBlock: string) => {
+      const lines = eventBlock
+        .split(/\r?\n/)
+        .map((line) => line.trimEnd())
+        .filter(Boolean);
+
+      if (lines.length === 0) {
+        return;
+      }
+
+      let eventName = "message";
+      const dataLines: string[] = [];
+
+      lines.forEach((line) => {
+        if (line.startsWith("event:")) {
+          eventName = line.slice(6).trim();
+          return;
+        }
+
+        if (line.startsWith("data:")) {
+          dataLines.push(line.slice(5).trimStart());
+        }
+      });
+
+      const rawData = dataLines.join("\n");
+      const parsedData = rawData ? JSON.parse(rawData) : null;
+
+      if (eventName === "meta" && parsedData) {
+        callbacks.onMeta?.(parsedData as ApiChatStreamMeta);
+        return;
+      }
+
+      if (eventName === "token" && parsedData && typeof parsedData.text === "string") {
+        callbacks.onToken?.(parsedData.text);
+        return;
+      }
+
+      if (eventName === "done" && parsedData) {
+        finalResponse = parsedData as ApiChatResponse;
+        callbacks.onDone?.(finalResponse);
+        return;
+      }
+
+      if (eventName === "error") {
+        const errorInfo = extractApiError(
+          parsedData,
+          "Une erreur est survenue cote serveur.",
+          "SERVER_ERROR",
+        );
+        streamError = errorInfo;
+        callbacks.onError?.(errorInfo as ApiChatErrorResponse);
+      }
+    };
+
+    try {
+      while (true) {
+        const { done, value } = await reader.read();
+        buffer += decoder.decode(value ?? new Uint8Array(), { stream: !done });
+
+        let separatorIndex = buffer.indexOf("\n\n");
+        while (separatorIndex >= 0) {
+          const eventBlock = buffer.slice(0, separatorIndex);
+          buffer = buffer.slice(separatorIndex + 2);
+          handleEventBlock(eventBlock);
+          separatorIndex = buffer.indexOf("\n\n");
+        }
+
+        if (done) {
+          break;
+        }
+      }
+    } catch (error) {
+      if (isAbortLikeError(error)) {
+        throw error;
+      }
+
+      throw error;
+    }
+
+    const trailingBlock = buffer.trim();
+    if (trailingBlock) {
+      handleEventBlock(trailingBlock);
+    }
+
+    if (streamError) {
+      throw new ApiError(streamError.message, response.status, streamError, streamError.code);
+    }
+
+    if (!finalResponse) {
+      if (callbacks.signal?.aborted) {
+        throw createAbortError();
+      }
+
+      throw new ApiError(
+        "Une erreur est survenue cote serveur.",
+        response.status,
+        null,
+        "SERVER_ERROR",
+      );
+    }
+
+    return finalResponse;
+  },
+};
+
+export const reportsApi = {
+  generate(
+    token: string,
+    payload: ApiReportGenerateRequest,
+    signal?: AbortSignal,
+  ) {
+    return request<ApiReportGenerateResponse>("/reports/generate", {
+      method: "POST",
+      token,
+      body: JSON.stringify(payload),
+      signal,
+    });
+  },
+  downloadPdf(
+    token: string,
+    reportId: string,
+    signal?: AbortSignal,
+  ) {
+    return requestBlob(`/reports/${reportId}/pdf`, {
+      method: "GET",
+      token,
+      signal,
+    });
+  },
+};
+
+export const liveMonitoringApi = {
+  status(token: string) {
+    return request<ApiLiveMonitoringStatus>("/live/status", { token });
+  },
+  kpis(token: string) {
+    return request<ApiLiveMonitoringSnapshot>("/live/kpis", { token });
+  },
+  buildStreamUrl(token: string) {
+    return `${buildWebSocketUrl(`/live/stream?token=${encodeURIComponent(token)}`)}`;
   },
 };
 
@@ -1427,8 +4153,18 @@ export const usersApi = {
   list(token: string, params?: ListUsersParams) {
     return request<ApiUser[]>(`/users/${buildQueryString(params)}`, { token });
   },
+  listInvitations(token: string) {
+    return request<ApiUserInvitation[]>("/users/invitations", { token });
+  },
   get(token: string, userId: number) {
     return request<ApiUser>(`/users/${userId}`, { token });
+  },
+  createInvitation(token: string, payload: CreateUserInvitationPayload) {
+    return request<ApiUserInvitationActionResponse>("/users/invitations", {
+      method: "POST",
+      token,
+      body: JSON.stringify(payload),
+    });
   },
   create(token: string, payload: CreateUserPayload) {
     return request<ApiUser>("/users/", {
@@ -1462,6 +4198,24 @@ export const usersApi = {
       method: "PATCH",
       token,
       body: JSON.stringify(payload),
+    });
+  },
+  resendInvitation(token: string, invitationId: number) {
+    return request<ApiUserInvitationActionResponse>(`/users/invitations/${invitationId}/resend`, {
+      method: "POST",
+      token,
+    });
+  },
+  cancelInvitation(token: string, invitationId: number) {
+    return request<ApiUserInvitationActionResponse>(`/users/invitations/${invitationId}/cancel`, {
+      method: "PATCH",
+      token,
+    });
+  },
+  deleteInvitation(token: string, invitationId: number) {
+    return request<void>(`/users/invitations/${invitationId}`, {
+      method: "DELETE",
+      token,
     });
   },
   remove(token: string, userId: number) {
@@ -1548,11 +4302,38 @@ export const cdrAnalyticsApi = {
       { token },
     );
   },
+  map(token: string, params?: CdrMapQuery) {
+    return request<ApiCdrMapResponse>(`/cdr-analytics/map${buildQueryString(params)}`, {
+      token,
+    });
+  },
+  roamingMap(token: string, params?: CdrRoamingMapQuery) {
+    return request<ApiRoamingMapResponse>(
+      `/cdr-analytics/roaming-map${buildQueryString(params)}`,
+      { token },
+    );
+  },
+};
+
+export const roamingApi = {
+  map(
+    token: string,
+    params?: RoamingIntelligenceQuery,
+    options: { signal?: AbortSignal } = {},
+  ) {
+    return request<ApiRoamingIntelligenceResponse>(`/roaming/map${buildQueryString(params)}`, {
+      token,
+      signal: options.signal,
+    });
+  },
 };
 
 export const mobileFleetApi = {
   overview(token: string, params?: MobileFleetQuery) {
     return request<ApiMobileFleetOverview>(`/mobile-fleet/overview${buildQueryString(params)}`, { token });
+  },
+  advancedKpis(token: string) {
+    return request<ApiMobileFleetAdvancedKpis>("/mobile-fleet/advanced-kpis", { token });
   },
   filters(token: string) {
     return request<ApiMobileFleetFilters>("/mobile-fleet/filters", { token });
@@ -1574,6 +4355,9 @@ export const mobileFleetApi = {
   },
   reports(token: string, params?: MobileFleetQuery) {
     return request<ApiMobileFleetReports>(`/mobile-fleet/reports${buildQueryString(params)}`, { token });
+  },
+  healthScore(token: string) {
+    return request<ApiFleetHealthScoreResponse>(`/fleet/health-score`, { token });
   },
 };
 
@@ -1797,6 +4581,12 @@ export const customerChurnApi = {
       token,
     });
   },
+  consumption(token: string, params?: CustomerChurnQuery) {
+    return request<ApiCustomerChurnConsumption>(
+      `/customer-churn/consumption${buildQueryString(params)}`,
+      { token },
+    );
+  },
   filters(token: string) {
     return request<ApiCustomerChurnFilters>("/customer-churn/filters", { token });
   },
@@ -1881,8 +4671,14 @@ export const plansApi = {
 export function formatRoleLabel(role: string): string {
   const normalizedRole = role.trim().toLowerCase();
 
+  if (normalizedRole === "super_admin") {
+    return "Super administrateur";
+  }
   if (normalizedRole === "admin") {
     return "Administrateur";
+  }
+  if (normalizedRole === "company_admin") {
+    return "Admin entreprise";
   }
   if (normalizedRole === "manager") {
     return "Manager";
@@ -1891,6 +4687,22 @@ export function formatRoleLabel(role: string): string {
     return "Utilisateur";
   }
   if (normalizedRole === "analyst") {
+    return "Analyste";
+  }
+
+  return role;
+}
+
+export function formatCompanyRequestedRoleLabel(role: string): string {
+  const normalizedRole = role.trim().toUpperCase();
+
+  if (normalizedRole === "ADMIN") {
+    return "Administrateur";
+  }
+  if (normalizedRole === "MANAGER") {
+    return "Manager";
+  }
+  if (normalizedRole === "ANALYST" || normalizedRole === "ANALYSTE") {
     return "Analyste";
   }
 

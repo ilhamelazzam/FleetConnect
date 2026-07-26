@@ -1,23 +1,20 @@
 from __future__ import annotations
 
 import csv
+import logging
 import threading
 from collections import Counter, defaultdict
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
+import unicodedata
 
-from app.core.config import get_settings
+from app.core.config import AI_OUTPUT_DIR, ResolvedDataSource, get_settings
 
 UNKNOWN_VALUE = "Inconnu"
 SEVERITY_ORDER = ("critique", "eleve", "moyen", "faible")
-DEFAULT_CDR_ANALYTICS_CSV_PATH = (
-    Path(__file__).resolve().parents[3]
-    / "ai"
-    / "data"
-    / "output"
-    / "telecom_cdr_fraud_output_maroc.csv"
-)
+DEFAULT_CDR_ANALYTICS_CSV_PATH = AI_OUTPUT_DIR / "telecom_cdr_fraud_fleetconnect_enriched.csv"
+CDR_ANALYTICS_LOGGER = logging.getLogger("app.cdr_analytics")
 
 
 @dataclass(slots=True)
@@ -38,17 +35,13 @@ def clear_cdr_analytics_cache() -> None:
         _cache.rows = None
 
 
+def _resolve_csv_source() -> ResolvedDataSource:
+    return get_settings().resolve_cdr_analytics_source()
+
+
 def _resolve_csv_path() -> Path:
-    settings = get_settings()
-    configured_path = settings.cdr_analytics_csv_path
-
-    if configured_path:
-        candidate = Path(configured_path)
-        if not candidate.is_absolute():
-            candidate = Path(__file__).resolve().parents[3] / candidate
-        return candidate
-
-    return DEFAULT_CDR_ANALYTICS_CSV_PATH
+    source = _resolve_csv_source()
+    return source.path or source.configured_path or DEFAULT_CDR_ANALYTICS_CSV_PATH
 
 
 def _parse_int(raw_value: Any, default: int = 0) -> int:
@@ -82,6 +75,29 @@ def _normalize_fraud_type(raw_value: Any) -> str:
     return fraud_type.lower().replace("-", "_").replace(" ", "_")
 
 
+def _strip_accents(value: str) -> str:
+    return "".join(
+        character
+        for character in unicodedata.normalize("NFKD", value)
+        if not unicodedata.combining(character)
+    )
+
+
+def _normalize_severity(raw_value: Any, fallback_score: float) -> str:
+    normalized = _strip_accents(_normalize_text(raw_value, fallback="")).lower()
+
+    if "crit" in normalized:
+        return "critique"
+    if "elev" in normalized or "high" in normalized:
+        return "eleve"
+    if "moy" in normalized or "med" in normalized:
+        return "moyen"
+    if "faib" in normalized or "low" in normalized:
+        return "faible"
+
+    return _get_severity(fallback_score)
+
+
 def _get_severity(score: float) -> str:
     if score >= 80:
         return "critique"
@@ -90,6 +106,26 @@ def _get_severity(score: float) -> str:
     if score >= 40:
         return "moyen"
     return "faible"
+
+
+def _derive_investigation_priority(severity: str, score: float) -> str:
+    if severity == "critique" or score >= 85:
+        return "P1"
+    if severity == "eleve" or score >= 65:
+        return "P2"
+    if severity == "moyen" or score >= 40:
+        return "P3"
+    return "P4"
+
+
+def _derive_ai_recommendation_priority(severity: str, high_cost_flag: bool) -> str:
+    if severity == "critique":
+        return "Immediate"
+    if high_cost_flag or severity == "eleve":
+        return "High"
+    if severity == "moyen":
+        return "Medium"
+    return "Low"
 
 
 def _build_recommendation(
@@ -169,8 +205,11 @@ def _normalize_cdr_row(row_index: int, row: dict[str, str]) -> dict[str, Any]:
     high_cost_flag = _parse_int(row.get("high_cost_flag")) == 1
     long_duration_flag = _parse_int(row.get("long_duration_flag")) == 1
     international_flag = _parse_int(row.get("international_flag")) == 1
-    severity = _get_severity(fraud_risk_score_100)
-    recommendation, recommendation_reason, rule_matches = _build_recommendation(
+    severity = _normalize_severity(
+        row.get("fraud_severity") or row.get("risk_level"),
+        fraud_risk_score_100,
+    )
+    fallback_recommendation, recommendation_reason, rule_matches = _build_recommendation(
         fraud_type=fraud_type,
         roaming_flag=roaming_flag,
         international_flag=international_flag,
@@ -178,11 +217,35 @@ def _normalize_cdr_row(row_index: int, row: dict[str, str]) -> dict[str, Any]:
         long_duration_flag=long_duration_flag,
         severity=severity,
     )
+    csv_recommendation = _normalize_text(row.get("recommendation"), fallback="")
+    recommendation = csv_recommendation or fallback_recommendation
 
     location_origin = _normalize_text(row.get("location_origin"))
     country_origin = _normalize_text(row.get("country_origin"))
     location_dest = _normalize_text(row.get("location_dest"))
     country_dest = _normalize_text(row.get("country_dest"))
+    estimated_financial_loss = round(
+        _parse_float(row.get("estimated_financial_loss"), default=-1),
+        2,
+    )
+    if estimated_financial_loss < 0:
+        estimated_financial_loss = round(
+            max(_parse_float(row.get("call_cost_mad")), 0.0),
+            2,
+        )
+    alert_flag = _parse_int(row.get("alert_flag"), default=1 if fraud_flag else 0) == 1
+    fraud_severity_score = round(
+        _parse_float(row.get("fraud_severity_score"), default=fraud_risk_score_100),
+        2,
+    )
+    investigation_priority = _normalize_text(
+        row.get("investigation_priority"),
+        fallback=_derive_investigation_priority(severity, fraud_risk_score_100),
+    )
+    ai_recommendation_priority = _normalize_text(
+        row.get("ai_recommendation_priority"),
+        fallback=_derive_ai_recommendation_priority(severity, high_cost_flag),
+    )
 
     return {
         "cdr_row_id": row_index,
@@ -205,16 +268,42 @@ def _normalize_cdr_row(row_index: int, row: dict[str, str]) -> dict[str, Any]:
         "long_duration_flag": long_duration_flag,
         "international_flag": international_flag,
         "fraud_flag": fraud_flag,
-        "is_alert": fraud_flag,
+        "is_alert": alert_flag,
+        "alert_flag": alert_flag,
         "fraud_risk_proba": fraud_risk_proba,
         "fraud_risk_score_100": fraud_risk_score_100,
         "severity": severity,
+        "fraud_severity": severity,
+        "fraud_severity_score": fraud_severity_score,
+        "risk_level": severity,
+        "investigation_priority": investigation_priority,
+        "estimated_financial_loss": estimated_financial_loss,
+        "ai_recommendation_priority": ai_recommendation_priority,
         "recommendation": recommendation,
         "recommendation_reason": recommendation_reason,
         "rule_matches": rule_matches,
         "route_label": (
             f"{location_origin} ({country_origin}) -> {location_dest} ({country_dest})"
         ),
+        "phone_number": _normalize_text(row.get("phone_number"), fallback=""),
+        "msisdn": _normalize_text(row.get("msisdn"), fallback=""),
+        "line_number": _normalize_text(row.get("line_number"), fallback=""),
+        "caller_number": _normalize_text(row.get("caller_number"), fallback=""),
+        "latitude": _normalize_text(row.get("latitude"), fallback=""),
+        "longitude": _normalize_text(row.get("longitude"), fallback=""),
+        "lat": _normalize_text(row.get("lat"), fallback=""),
+        "lng": _normalize_text(row.get("lng"), fallback=""),
+        "gps_latitude": _normalize_text(row.get("gps_latitude"), fallback=""),
+        "gps_longitude": _normalize_text(row.get("gps_longitude"), fallback=""),
+        "gps_consent": _normalize_text(row.get("gps_consent"), fallback=""),
+        "location_consent": _normalize_text(row.get("location_consent"), fallback=""),
+        "geo_consent": _normalize_text(row.get("geo_consent"), fallback=""),
+        "consent_location": _normalize_text(row.get("consent_location"), fallback=""),
+        "consent_gps": _normalize_text(row.get("consent_gps"), fallback=""),
+        "mcc": _normalize_text(row.get("mcc"), fallback=""),
+        "country_mcc": _normalize_text(row.get("country_mcc"), fallback=""),
+        "operator_mcc": _normalize_text(row.get("operator_mcc"), fallback=""),
+        "mcc_code": _normalize_text(row.get("mcc_code"), fallback=""),
     }
 
 
@@ -222,15 +311,29 @@ def _parse_cdr_csv(csv_path: Path) -> list[dict[str, Any]]:
     with csv_path.open("r", encoding="utf-8-sig", newline="") as csv_file:
         reader = csv.DictReader(csv_file, delimiter=";")
         return [
-            _normalize_cdr_row(row_index, row)
+            _normalize_cdr_row(
+                row_index,
+                {
+                    (key or "").replace("\ufeff", "").strip(): value
+                    for key, value in row.items()
+                },
+            )
             for row_index, row in enumerate(reader, start=1)
         ]
 
 
 def _load_cdr_rows() -> list[dict[str, Any]]:
-    csv_path = _resolve_csv_path()
-    if not csv_path.exists():
-        raise FileNotFoundError(f"CDR analytics CSV not found at {csv_path}")
+    source = _resolve_csv_source()
+    csv_path = source.path
+    if csv_path is None:
+        CDR_ANALYTICS_LOGGER.warning(
+            "event=csv_source_missing source=%s preferred=%s searched=%s configured_path=%s",
+            source.key,
+            source.preferred_name,
+            [str(path) for path in source.searched_paths],
+            str(source.configured_path) if source.configured_path else None,
+        )
+        return []
 
     current_mtime = csv_path.stat().st_mtime
 
@@ -242,7 +345,25 @@ def _load_cdr_rows() -> list[dict[str, Any]]:
         ):
             return _cache.rows
 
-    rows = _parse_cdr_csv(csv_path)
+    try:
+        rows = _parse_cdr_csv(csv_path)
+    except Exception as exc:
+        CDR_ANALYTICS_LOGGER.warning(
+            "event=csv_source_read_failed source=%s path=%s searched=%s error=%s",
+            source.key,
+            str(csv_path),
+            [str(path) for path in source.searched_paths],
+            str(exc),
+        )
+        return []
+
+    CDR_ANALYTICS_LOGGER.info(
+        "event=csv_source_loaded source=%s path=%s rows=%s searched=%s",
+        source.key,
+        str(csv_path),
+        len(rows),
+        [str(path) for path in source.searched_paths],
+    )
 
     with _cache_lock:
         _cache.path = csv_path
@@ -250,6 +371,10 @@ def _load_cdr_rows() -> list[dict[str, Any]]:
         _cache.rows = rows
 
     return rows
+
+
+def get_cdr_rows() -> list[dict[str, Any]]:
+    return list(_load_cdr_rows())
 
 
 def _matches_filters(
@@ -357,6 +482,12 @@ def _serialize_alert(row: dict[str, Any]) -> dict[str, Any]:
         "fraud_risk_score_100": row["fraud_risk_score_100"],
         "severity": row["severity"],
         "is_alert": row["is_alert"],
+        "alert_flag": row["alert_flag"],
+        "fraud_severity": row["fraud_severity"],
+        "fraud_severity_score": row["fraud_severity_score"],
+        "investigation_priority": row["investigation_priority"],
+        "estimated_financial_loss": row["estimated_financial_loss"],
+        "ai_recommendation_priority": row["ai_recommendation_priority"],
         "recommendation": row["recommendation"],
         **_build_cdr_risk_insight(row),
     }
@@ -373,6 +504,12 @@ def _serialize_recommendation(row: dict[str, Any]) -> dict[str, Any]:
         "fraud_type": row["fraud_type"],
         "call_cost_mad": row["call_cost_mad"],
         "fraud_risk_score_100": row["fraud_risk_score_100"],
+        "alert_flag": row["alert_flag"],
+        "fraud_severity": row["fraud_severity"],
+        "fraud_severity_score": row["fraud_severity_score"],
+        "investigation_priority": row["investigation_priority"],
+        "estimated_financial_loss": row["estimated_financial_loss"],
+        "ai_recommendation_priority": row["ai_recommendation_priority"],
         "recommendation": row["recommendation"],
         "recommendation_reason": row["recommendation_reason"],
         **_build_cdr_risk_insight(row),
@@ -542,6 +679,11 @@ def get_cdr_alert_detail(cdr_row_id: int) -> dict[str, Any] | None:
         "long_duration_flag": target_row["long_duration_flag"],
         "international_flag": target_row["international_flag"],
         "fraud_risk_proba": target_row["fraud_risk_proba"],
+        "fraud_severity": target_row["fraud_severity"],
+        "fraud_severity_score": target_row["fraud_severity_score"],
+        "investigation_priority": target_row["investigation_priority"],
+        "estimated_financial_loss": target_row["estimated_financial_loss"],
+        "ai_recommendation_priority": target_row["ai_recommendation_priority"],
         "recommendation_reason": target_row["recommendation_reason"],
         "rule_matches": target_row["rule_matches"],
         "route_label": target_row["route_label"],

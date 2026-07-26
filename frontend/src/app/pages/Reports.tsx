@@ -35,10 +35,19 @@ import { Badge } from "../components/ui/badge";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../components/ui/tooltip";
 import { useAuth } from "../context/AuthContext";
 import {
+  cdrAnalyticsApi,
   ApiError,
   customerChurnApi,
+  mobileFleetApi,
+  reportsApi,
+  type ApiCdrOverview,
+  type ApiCdrRecommendationList,
   type ApiCustomerChurnFilters,
   type ApiCustomerChurnReports,
+  type ApiMobileFleetAdvancedKpis,
+  type ApiMobileFleetReports,
+  type ApiReportGenerateResponse,
+  type ApiReportType,
 } from "../lib/api";
 import {
   buildRecommendationSummary,
@@ -60,6 +69,17 @@ import {
 type PriorityLevel = "P1" | "P2" | "P3";
 type SortMode = "revenue" | "churn";
 type SegmentType = "contract" | "service" | "price";
+
+const reportTypeOptions: Array<{
+  value: ApiReportType;
+  label: string;
+  helper: string;
+}> = [
+  { value: "executive", label: "Executif", helper: "Synthese direction et arbitrages prioritaires." },
+  { value: "fraud", label: "Fraude CDR", helper: "Focus sur pertes, appels suspects et zones rouges." },
+  { value: "cost_optimization", label: "Optimisation couts", helper: "Economies, surdimensionnement et recommandations." },
+  { value: "complete", label: "Complet IA", helper: "Rapport transverse integrant tous les signaux disponibles." },
+];
 
 interface StrategicSegment {
   key: string;
@@ -113,6 +133,69 @@ function downloadCsv(filename: string, headers: string[], rows: Array<Array<stri
 
   const csvContent = [headers.join(","), ...escapedRows].join("\n");
   const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  link.click();
+  URL.revokeObjectURL(url);
+}
+
+function escapeXml(value: string): string {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&apos;");
+}
+
+function downloadSpreadsheetXml(
+  filename: string,
+  sheetName: string,
+  headers: string[],
+  rows: Array<Array<string | number | boolean>>,
+) {
+  const headerXml = headers
+    .map(
+      (header) =>
+        `<Cell ss:StyleID="header"><Data ss:Type="String">${escapeXml(header)}</Data></Cell>`,
+    )
+    .join("");
+  const bodyXml = rows
+    .map((row) => {
+      const cells = row
+        .map((value) => {
+          const isNumber = typeof value === "number" && Number.isFinite(value);
+          const cellType = isNumber ? "Number" : "String";
+          const cellValue = isNumber ? String(value) : escapeXml(String(value));
+          return `<Cell><Data ss:Type="${cellType}">${cellValue}</Data></Cell>`;
+        })
+        .join("");
+      return `<Row>${cells}</Row>`;
+    })
+    .join("");
+
+  const xmlContent = `<?xml version="1.0"?>
+<Workbook xmlns="urn:schemas-microsoft-com:office:spreadsheet"
+ xmlns:o="urn:schemas-microsoft-com:office:office"
+ xmlns:x="urn:schemas-microsoft-com:office:excel"
+ xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet">
+  <Styles>
+    <Style ss:ID="header">
+      <Font ss:Bold="1" />
+      <Interior ss:Color="#DBEAFE" ss:Pattern="Solid" />
+    </Style>
+  </Styles>
+  <Worksheet ss:Name="${escapeXml(sheetName)}">
+    <Table>
+      <Row>${headerXml}</Row>
+      ${bodyXml}
+    </Table>
+  </Worksheet>
+</Workbook>`;
+
+  const blob = new Blob([xmlContent], { type: "application/vnd.ms-excel;charset=utf-8;" });
   const url = URL.createObjectURL(blob);
   const link = document.createElement("a");
   link.href = url;
@@ -226,6 +309,15 @@ export default function Reports() {
   const [contactedCustomerIds, setContactedCustomerIds] = useState<number[]>([]);
   const [appliedCustomerIds, setAppliedCustomerIds] = useState<number[]>([]);
   const [selectedCustomerId, setSelectedCustomerId] = useState<number | null>(null);
+  const [mobileReports, setMobileReports] = useState<ApiMobileFleetReports | null>(null);
+  const [advancedKpis, setAdvancedKpis] = useState<ApiMobileFleetAdvancedKpis | null>(null);
+  const [cdrOverview, setCdrOverview] = useState<ApiCdrOverview | null>(null);
+  const [cdrRecommendations, setCdrRecommendations] = useState<ApiCdrRecommendationList | null>(null);
+  const [reportHubErrorMessage, setReportHubErrorMessage] = useState<string | null>(null);
+  const [selectedAiReportType, setSelectedAiReportType] = useState<ApiReportType>("executive");
+  const [generatedReport, setGeneratedReport] = useState<ApiReportGenerateResponse | null>(null);
+  const [isGeneratingPdf, setIsGeneratingPdf] = useState(false);
+  const [isDownloadingPdf, setIsDownloadingPdf] = useState(false);
 
   useEffect(() => {
     let isMounted = true;
@@ -280,6 +372,57 @@ export default function Reports() {
       isMounted = false;
     };
   }, [token, searchQuery, selectedDepartment, selectedContract, selectedInternetService, selectedPriceRange, selectedRiskLevel]);
+
+  useEffect(() => {
+    let isMounted = true;
+
+    async function loadReportHub() {
+      if (!token) {
+        if (isMounted) {
+          setMobileReports(null);
+          setAdvancedKpis(null);
+          setCdrOverview(null);
+          setCdrRecommendations(null);
+        }
+        return;
+      }
+
+      setReportHubErrorMessage(null);
+
+      try {
+        const [mobileResponse, advancedResponse, fraudOverviewResponse, fraudRecommendationsResponse] =
+          await Promise.all([
+            mobileFleetApi.reports(token),
+            mobileFleetApi.advancedKpis(token),
+            cdrAnalyticsApi.overview(token),
+            cdrAnalyticsApi.recommendations(token, { limit: 12 }),
+          ]);
+
+        if (isMounted) {
+          setMobileReports(mobileResponse);
+          setAdvancedKpis(advancedResponse);
+          setCdrOverview(fraudOverviewResponse);
+          setCdrRecommendations(fraudRecommendationsResponse);
+        }
+      } catch (error) {
+        if (isMounted) {
+          setMobileReports(null);
+          setAdvancedKpis(null);
+          setCdrOverview(null);
+          setCdrRecommendations(null);
+          setReportHubErrorMessage(
+            normalizeError(error, "Impossible de charger le centre de rapports multi-source."),
+          );
+        }
+      }
+    }
+
+    void loadReportHub();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [token]);
 
   const topSummary = buildRecommendationSummary(reports?.top_revenue_at_risk ?? []);
   const topCustomers = [...(reports?.top_revenue_at_risk ?? [])]
@@ -373,6 +516,79 @@ export default function Reports() {
       rows: visibleCustomers.map((customer) => [customer.customer_id, customer.department, formatContractLabel(customer.contract), customer.priorityLevel, customer.risk_level, customer.risk_proba, customer.revenue_at_risk_mad, customer.recommendation]),
     },
   ];
+  const reportTypeMeta =
+    reportTypeOptions.find((option) => option.value === selectedAiReportType) ?? reportTypeOptions[0];
+  const multiSourceHeaders = ["source", "metric", "value", "contexte"];
+  const multiSourceRows: Array<Array<string | number>> = [
+    [
+      "fleetconnect_advanced_kpi.csv",
+      "Fleet Health Score",
+      advancedKpis?.fleet_health_score ?? 0,
+      "Scoring consolide du notebook device",
+    ],
+    [
+      "fleetconnect_advanced_kpi.csv",
+      "Economies potentielles MAD",
+      advancedKpis?.potential_savings_mad ?? 0,
+      "Potentiel d'optimisation du parc",
+    ],
+    [
+      "fleet_ai_results_morocco.csv",
+      "Revenu a risque MAD",
+      reports?.kpis.revenue_at_risk_mad ?? 0,
+      "Clients churn prioritaires",
+    ],
+    [
+      "fleet_ai_results_morocco.csv",
+      "Clients a risque",
+      reports?.kpis.high_risk_customers ?? 0,
+      "Projection churn",
+    ],
+    [
+      "telecom_cdr_fraud_fleetconnect_enriched.csv",
+      "Appels suspects",
+      cdrOverview?.kpis.suspicious_calls ?? 0,
+      "Fraude et appels anormaux",
+    ],
+    [
+      "telecom_cdr_fraud_fleetconnect_enriched.csv",
+      "Exposition suspecte MAD",
+      cdrOverview?.kpis.suspicious_cost_exposure_mad ?? 0,
+      "Cout cumule suspect",
+    ],
+  ];
+  const mobileHubHeaders = [
+    "department",
+    "devices_to_optimize",
+    "alert_devices",
+    "critical_risks",
+    "estimated_budget_mad",
+  ];
+  const mobileHubRows = (mobileReports?.recommendations_by_department ?? []).map((row) => [
+    row.department,
+    row.devices_to_optimize,
+    row.alert_devices,
+    row.critical_risks,
+    row.estimated_budget_mad,
+  ]);
+  const fraudHubHeaders = [
+    "operator",
+    "department",
+    "severity",
+    "fraud_type",
+    "risk_score",
+    "estimated_financial_loss",
+    "recommendation",
+  ];
+  const fraudHubRows = (cdrRecommendations?.items ?? []).map((row) => [
+    row.operator_maroc,
+    row.department,
+    row.fraud_severity,
+    row.fraud_type,
+    row.fraud_risk_score_100,
+    row.estimated_financial_loss,
+    row.recommendation,
+  ]);
 
   useEffect(() => {
     if (!selectedCustomerId && visibleCustomers[0]) setSelectedCustomerId(visibleCustomers[0].customer_row_id);
@@ -405,6 +621,20 @@ export default function Reports() {
     setActiveExportKey(null);
   }
 
+  async function handleExcelExport(
+    key: string,
+    filename: string,
+    sheetName: string,
+    headers: string[],
+    rows: Array<Array<string | number | boolean>>,
+  ) {
+    setActiveExportKey(key);
+    downloadSpreadsheetXml(filename, sheetName, headers, rows);
+    toast.success("Export Excel pret", { description: `${filename} a ete genere pour la vue courante.` });
+    await wait(700);
+    setActiveExportKey(null);
+  }
+
   async function handleSimulate() {
     setIsSimulating(true);
     await wait(700);
@@ -429,36 +659,216 @@ export default function Reports() {
     toast.success("Action appliquee", { description: `${customer.customer_id} passe en execution prioritaire.` });
   }
 
+  async function handleGeneratePdfReport() {
+    if (!token) return;
+
+    setIsGeneratingPdf(true);
+    try {
+      const response = await reportsApi.generate(token, { report_type: selectedAiReportType });
+      setGeneratedReport(response);
+      toast.success("Rapport PDF genere", {
+        description: `${reportTypeMeta.label} disponible pour telechargement.`,
+      });
+    } catch (error) {
+      toast.error("Generation impossible", {
+        description: normalizeError(error, "Le PDF IA n'a pas pu etre genere."),
+      });
+    } finally {
+      setIsGeneratingPdf(false);
+    }
+  }
+
+  async function handleDownloadGeneratedPdf() {
+    if (!token || !generatedReport) return;
+
+    setIsDownloadingPdf(true);
+    try {
+      const blob = await reportsApi.downloadPdf(token, generatedReport.report_id);
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `rapport-${generatedReport.report_type}-${generatedReport.report_id}.pdf`;
+      link.click();
+      URL.revokeObjectURL(url);
+    } catch (error) {
+      toast.error("Telechargement impossible", {
+        description: normalizeError(error, "Le PDF genere n'a pas pu etre recupere."),
+      });
+    } finally {
+      setIsDownloadingPdf(false);
+    }
+  }
+
   return (
     <div className="space-y-6 p-6">
       <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
         <div>
-          <h1 className="mb-2 text-2xl font-bold text-[#0F172A]">Rapports churn</h1>
-          <p className="max-w-4xl text-[#64748B]">Dashboard IA pour comprendre le churn, prioriser les revenus exposes et piloter les actions a fort impact business.</p>
+          <h1 className="mb-2 text-2xl font-bold text-[#0F172A]">Rapports sur le risque client</h1>
+          <p className="max-w-4xl text-[#64748B]">Suivez les clients a risque, le revenu a proteger et les actions les plus utiles pour agir rapidement.</p>
         </div>
         <div className="flex flex-wrap gap-3">
           <button type="button" onClick={() => void handleSimulate()} className={primaryButtonClass}>
             <Sparkles className={`h-4 w-4 ${isSimulating ? "animate-spin" : ""}`} />
-            <span>{isSimulating ? "Simulation..." : "Simuler reduction churn"}</span>
+            <span>{isSimulating ? "Simulation..." : "Tester une baisse du risque client"}</span>
           </button>
           <button type="button" onClick={() => navigate("/predictions")} className={secondaryButtonClass}>
             <TrendingUp className="h-4 w-4" />
-            <span>Predictions churn</span>
+            <span>Previsions et alertes</span>
           </button>
           <button type="button" onClick={() => navigate("/recommandations")} className={secondaryButtonClass}>
             <Lightbulb className="h-4 w-4" />
-            <span>Recommandations IA</span>
+            <span>Suggestions d'optimisation</span>
           </button>
         </div>
       </div>
 
       {errorMessage ? <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-600">{errorMessage}</div> : null}
 
+      <div className="grid grid-cols-1 gap-6 xl:grid-cols-[minmax(0,1.35fr)_minmax(340px,0.65fr)]">
+        <div className="rounded-3xl border border-blue-100 bg-gradient-to-br from-[#EFF6FF] via-white to-[#F8FAFC] p-6">
+          <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+            <div>
+              <p className="text-xs uppercase tracking-[0.22em] text-[#64748B]">Centre de rapports IA</p>
+              <h2 className="mt-2 text-2xl font-semibold text-[#0F172A]">Synthese croisee de vos trois jeux de donnees</h2>
+              <p className="mt-2 max-w-3xl text-sm leading-7 text-[#64748B]">
+                Restitution conjointe du notebook device, de la consommation/churn et des signaux
+                fraude CDR pour produire des exports direction et des rapports plus complets.
+              </p>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <Badge className="border-blue-200 bg-white text-[#1D4ED8]">3 CSV relies</Badge>
+              <Badge className="border-emerald-200 bg-white text-[#16A34A]">
+                Economies {formatMadValue(advancedKpis?.potential_savings_mad ?? 0)}
+              </Badge>
+            </div>
+          </div>
+
+          <div className="mt-5 grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
+            <div className="rounded-2xl border border-white/80 bg-white/90 p-4">
+              <p className="text-xs uppercase tracking-[0.16em] text-[#64748B]">Fleet Health</p>
+              <p className="mt-3 text-2xl font-semibold text-[#0F172A]">
+                {(advancedKpis?.fleet_health_score ?? 0) > 0 ? `${advancedKpis?.fleet_health_score}/100` : "--"}
+              </p>
+              <p className="mt-1 text-sm text-[#64748B]">Notebook `fleetconnect_advanced_kpi.csv`</p>
+            </div>
+            <div className="rounded-2xl border border-white/80 bg-white/90 p-4">
+              <p className="text-xs uppercase tracking-[0.16em] text-[#64748B]">Adaptation moyenne</p>
+              <p className="mt-3 text-2xl font-semibold text-[#0F172A]">
+                {advancedKpis ? `${advancedKpis.average_fit_score.toFixed(1)}/100` : "--"}
+              </p>
+              <p className="mt-1 text-sm text-[#64748B]">Taux d'adequation {advancedKpis ? `${advancedKpis.fit_rate_pct.toFixed(1)}%` : "--"}</p>
+            </div>
+            <div className="rounded-2xl border border-white/80 bg-white/90 p-4">
+              <p className="text-xs uppercase tracking-[0.16em] text-[#64748B]">Exposition fraude</p>
+              <p className="mt-3 text-2xl font-semibold text-[#0F172A]">
+                {formatMadValue(cdrOverview?.kpis.suspicious_cost_exposure_mad ?? 0)}
+              </p>
+              <p className="mt-1 text-sm text-[#64748B]">{cdrOverview?.kpis.suspicious_calls ?? 0} appels suspects</p>
+            </div>
+            <div className="rounded-2xl border border-white/80 bg-white/90 p-4">
+              <p className="text-xs uppercase tracking-[0.16em] text-[#64748B]">Revenu a proteger</p>
+              <p className="mt-3 text-2xl font-semibold text-[#0F172A]">
+                {formatMadValue(reports?.kpis.revenue_at_risk_mad ?? 0)}
+              </p>
+              <p className="mt-1 text-sm text-[#64748B]">{reports?.kpis.high_risk_customers ?? 0} clients a risque</p>
+            </div>
+          </div>
+
+          {advancedKpis?.alerts_summary ? (
+            <div className="mt-4 rounded-2xl border border-blue-100 bg-white/85 px-4 py-3 text-sm text-[#475569]">
+              {advancedKpis.alerts_summary}
+            </div>
+          ) : null}
+        </div>
+
+        <div className={`${panelClass} p-6`}>
+          <div className="flex items-center gap-2">
+            <Download className="h-5 w-5 text-[#2D6CDF]" />
+            <h2 className="text-lg font-semibold text-[#0F172A]">Exports PDF, CSV et Excel</h2>
+          </div>
+          <p className="mt-2 text-sm leading-6 text-[#64748B]">
+            Choisissez un type de rapport IA puis exportez vos vues direction, mobile et fraude.
+          </p>
+
+          {reportHubErrorMessage ? (
+            <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-[#92400E]">
+              {reportHubErrorMessage}
+            </div>
+          ) : null}
+
+          <div className="mt-5 space-y-3">
+            <div>
+              <label className="mb-2 block text-sm font-medium text-[#0F172A]">Type de rapport PDF</label>
+              <select
+                value={selectedAiReportType}
+                onChange={(event) => setSelectedAiReportType(event.target.value as ApiReportType)}
+                className="w-full rounded-xl border border-gray-200 bg-[#F8FAFC] px-4 py-2.5 text-sm focus:border-transparent focus:outline-none focus:ring-2 focus:ring-[#2D6CDF]"
+              >
+                {reportTypeOptions.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+              <p className="mt-2 text-xs text-[#64748B]">{reportTypeMeta.helper}</p>
+            </div>
+
+            <button type="button" onClick={() => void handleGeneratePdfReport()} className={`${primaryButtonClass} w-full justify-center`}>
+              <Sparkles className={`h-4 w-4 ${isGeneratingPdf ? "animate-spin" : ""}`} />
+              <span>{isGeneratingPdf ? "Generation du PDF..." : "Generer le PDF IA"}</span>
+            </button>
+
+            {generatedReport ? (
+              <button type="button" onClick={() => void handleDownloadGeneratedPdf()} className={`${secondaryButtonClass} w-full justify-center`}>
+                <Download className={`h-4 w-4 ${isDownloadingPdf ? "animate-bounce" : ""}`} />
+                <span>{isDownloadingPdf ? "Telechargement..." : "Telecharger le dernier PDF"}</span>
+              </button>
+            ) : null}
+
+            <button
+              type="button"
+              onClick={() => void handleExport("multi-source-csv", "rapport-synthese-multi-source.csv", multiSourceHeaders, multiSourceRows)}
+              className={`w-full rounded-2xl border p-4 text-left transition-all hover:-translate-y-0.5 hover:shadow-md ${activeExportKey === "multi-source-csv" ? "border-[#2D6CDF] bg-blue-50 animate-pulse" : "border-gray-200 bg-white"}`}
+            >
+              <p className="font-semibold text-[#0F172A]">CSV multi-source</p>
+              <p className="mt-1 text-xs text-[#64748B]">Direction, economies, churn et fraude dans un seul export.</p>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => void handleExcelExport("multi-source-xls", "rapport-synthese-multi-source.xls", "Synthese", multiSourceHeaders, multiSourceRows)}
+              className={`w-full rounded-2xl border p-4 text-left transition-all hover:-translate-y-0.5 hover:shadow-md ${activeExportKey === "multi-source-xls" ? "border-[#16A34A] bg-emerald-50 animate-pulse" : "border-gray-200 bg-white"}`}
+            >
+              <p className="font-semibold text-[#0F172A]">Excel synthese</p>
+              <p className="mt-1 text-xs text-[#64748B]">Version tableur compatible Excel des KPI consolides.</p>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => void handleExport("mobile-csv", "rapport-mobile-par-departement.csv", mobileHubHeaders, mobileHubRows)}
+              className={`w-full rounded-2xl border p-4 text-left transition-all hover:-translate-y-0.5 hover:shadow-md ${activeExportKey === "mobile-csv" ? "border-[#2D6CDF] bg-blue-50 animate-pulse" : "border-gray-200 bg-white"}`}
+            >
+              <p className="font-semibold text-[#0F172A]">CSV mobile</p>
+              <p className="mt-1 text-xs text-[#64748B]">Recommendations par departement et budget a optimiser.</p>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => void handleExcelExport("fraud-xls", "rapport-fraude-cdr.xls", "FraudeCDR", fraudHubHeaders, fraudHubRows)}
+              className={`w-full rounded-2xl border p-4 text-left transition-all hover:-translate-y-0.5 hover:shadow-md ${activeExportKey === "fraud-xls" ? "border-[#7C3AED] bg-violet-50 animate-pulse" : "border-gray-200 bg-white"}`}
+            >
+              <p className="font-semibold text-[#0F172A]">Excel fraude CDR</p>
+              <p className="mt-1 text-xs text-[#64748B]">Pertes estimees, severite et recommandations d'investigation.</p>
+            </button>
+          </div>
+        </div>
+      </div>
+
       <div className={`${panelClass} p-4`}>
         <div className="mb-4 flex items-center justify-between">
           <div className="flex items-center gap-2 text-sm font-medium text-[#64748B]">
             <Filter className="h-4 w-4" />
-            <span>{reports?.kpis.total_customers ?? 0} clients dans la vue decisionnelle</span>
+            <span>{reports?.kpis.total_customers ?? 0} clients dans cette vue</span>
           </div>
           <button type="button" onClick={resetFilters} className={secondaryButtonClass}>Reinitialiser</button>
         </div>
@@ -477,14 +887,14 @@ export default function Reports() {
 
       <div className="grid grid-cols-1 gap-4 md:grid-cols-4">
         <div className={`${panelClass} p-6`}><p className="text-sm text-[#64748B]">Clients</p><p className="mt-2 text-3xl font-bold text-[#0F172A]">{isLoading ? "--" : reports?.kpis.total_customers ?? 0}</p></div>
-        <div className={`${panelClass} p-6`}><p className="text-sm text-[#64748B]">Churn reel</p><p className="mt-2 text-3xl font-bold text-[#DC2626]">{isLoading ? "--" : reports?.kpis.actual_churn_customers ?? 0}</p></div>
+        <div className={`${panelClass} p-6`}><p className="text-sm text-[#64748B]">Departs constates</p><p className="mt-2 text-3xl font-bold text-[#DC2626]">{isLoading ? "--" : reports?.kpis.actual_churn_customers ?? 0}</p></div>
         <div className={`${panelClass} p-6`}><p className="text-sm text-[#64748B]">Clients a risque</p><p className="mt-2 text-3xl font-bold text-[#D97706]">{isLoading ? "--" : reports?.kpis.high_risk_customers ?? 0}</p></div>
         <div className={`${panelClass} p-6`}><p className="text-sm text-[#64748B]">Revenu a risque</p><p className="mt-2 text-3xl font-bold text-[#0F172A]">{isLoading ? "--" : formatMadValue(reports?.kpis.revenue_at_risk_mad ?? 0)}</p></div>
       </div>
 
       <div className="grid grid-cols-1 gap-6 xl:grid-cols-[minmax(0,1.6fr)_minmax(320px,1fr)]">
         <div className="rounded-3xl border border-blue-100 bg-gradient-to-br from-[#EFF6FF] via-white to-[#F8FAFC] p-6">
-          <div className="flex items-center gap-2"><Brain className="h-5 w-5 text-[#2D6CDF]" /><h2 className="text-lg font-semibold text-[#0F172A]">Synthese IA</h2><InfoTip label="Lecture automatique du facteur dominant, du segment critique et de la recommandation globale a partir des donnees churn." /></div>
+          <div className="flex items-center gap-2"><Brain className="h-5 w-5 text-[#2D6CDF]" /><h2 className="text-lg font-semibold text-[#0F172A]">Vue d'ensemble</h2><InfoTip label="Lecture automatique du facteur principal, du segment critique et de l'action globale a partir des donnees clients." /></div>
           <div className="mt-5 grid grid-cols-1 gap-4 md:grid-cols-2">
             <div className="rounded-2xl bg-white/90 p-5"><p className="text-xs uppercase tracking-[0.18em] text-[#64748B]">Principal facteur</p><p className="mt-3 text-xl font-semibold text-[#0F172A]">{leadSegment ? `${leadSegment.typeLabel} - ${leadSegment.label}` : "--"}</p><p className="mt-2 text-sm text-[#64748B]">{leadSegment ? `${leadSegment.predictedHighRiskCustomers} clients a risque, ${leadSegment.churnRatePct.toFixed(1)}% de churn et ${formatMadValue(leadSegment.revenueAtRiskMad)} exposes.` : "Analyse indisponible."}</p></div>
             <div className="rounded-2xl bg-white/90 p-5"><p className="text-xs uppercase tracking-[0.18em] text-[#64748B]">Segment le plus critique</p><p className="mt-3 text-xl font-semibold text-[#0F172A]">{departmentLead ? departmentLead.label : "--"}</p><p className="mt-2 text-sm text-[#64748B]">{departmentLead ? `${departmentLead.predicted_high_risk_customers} clients exposes pour ${formatMadValue(departmentLead.revenue_at_risk_mad)}.` : "Aucun segment critique detecte."}</p></div>
@@ -499,7 +909,7 @@ export default function Reports() {
             <div className="rounded-2xl bg-[#F8FAFC] p-4"><p className="text-xs uppercase tracking-[0.18em] text-[#64748B]">Revenu recuperable</p><p className="mt-2 text-2xl font-semibold text-[#16A34A]">{isLoading ? "--" : formatMadValue(recoveredRevenueMad)}</p></div>
             <div className="rounded-2xl bg-[#F8FAFC] p-4"><p className="text-xs uppercase tracking-[0.18em] text-[#64748B]">Gain potentiel</p><p className="mt-2 text-2xl font-semibold text-[#2D6CDF]">{isLoading ? "--" : formatMadValue(gainPotentialMad)}</p></div>
           </div>
-          <div className="mt-5 rounded-2xl border border-emerald-100 bg-white p-4"><p className="text-sm font-medium text-[#0F172A]">{simulationReady ? "Scenario simule actif" : "Projection IA prete a etre validee"}</p><p className="mt-2 text-sm text-[#64748B]">Churn reduit {churnReducedPct.toFixed(1)}% - {customersSaved} clients sauves.</p></div>
+          <div className="mt-5 rounded-2xl border border-emerald-100 bg-white p-4"><p className="text-sm font-medium text-[#0F172A]">{simulationReady ? "Scenario simule actif" : "Projection prete a etre validee"}</p><p className="mt-2 text-sm text-[#64748B]">Risque de depart reduit de {churnReducedPct.toFixed(1)}% - {customersSaved} clients conserves.</p></div>
         </div>
       </div>
 
@@ -516,7 +926,7 @@ export default function Reports() {
         <div className={`${panelClass} p-6`}>
           <div className="mb-4 flex items-center gap-2">
             <TrendingUp className="h-5 w-5 text-[#2D6CDF]" />
-            <h2 className="text-lg font-semibold text-[#0F172A]">Churn par contrat</h2>
+            <h2 className="text-lg font-semibold text-[#0F172A]">Risque de depart par contrat</h2>
             <InfoTip label="Cliquez sur une barre pour filtrer la page sur le contrat correspondant." />
           </div>
           <ResponsiveContainer width="100%" height={300}>
@@ -526,7 +936,7 @@ export default function Reports() {
               <YAxis stroke="#64748B" />
               <Legend />
               <RechartsTooltip />
-              <Bar dataKey="actual_churn_customers" name="Churn reel" fill="#F97316" radius={[8, 8, 0, 0]} />
+              <Bar dataKey="actual_churn_customers" name="Departs constates" fill="#F97316" radius={[8, 8, 0, 0]} />
               <Bar
                 dataKey="predicted_high_risk_customers"
                 name="A risque"
@@ -547,7 +957,7 @@ export default function Reports() {
         <div className={`${panelClass} p-6`}>
           <div className="mb-4 flex items-center gap-2">
             <Wallet className="h-5 w-5 text-[#16A34A]" />
-            <h2 className="text-lg font-semibold text-[#0F172A]">Churn vs revenu</h2>
+            <h2 className="text-lg font-semibold text-[#0F172A]">Risque et revenu</h2>
             <InfoTip label="Lecture croisee entre revenu a risque et taux de churn. Cliquez sur une barre pour filtrer le palier de prix." />
           </div>
           <ResponsiveContainer width="100%" height={300}>
@@ -580,7 +990,7 @@ export default function Reports() {
         <div className={`${panelClass} p-6`}>
           <div className="mb-4 flex items-center gap-2">
             <Lightbulb className="h-5 w-5 text-[#6D28D9]" />
-            <h2 className="text-lg font-semibold text-[#0F172A]">Churn par service</h2>
+            <h2 className="text-lg font-semibold text-[#0F172A]">Risque par service</h2>
             <InfoTip label="Cliquez sur une barre pour isoler le service internet qui concentre le risque." />
           </div>
           <ResponsiveContainer width="100%" height={300}>

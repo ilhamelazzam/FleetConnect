@@ -13,7 +13,7 @@ import {
   type ApiPlan,
 } from "./api";
 
-const PHONE_LINES_BATCH_SIZE = 200;
+const PHONE_LINES_BATCH_SIZE = 100;
 
 export interface TelecomAssistantBudgetEntry {
   label: string;

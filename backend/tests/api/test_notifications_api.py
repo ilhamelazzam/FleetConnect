@@ -1,6 +1,16 @@
 from fastapi.testclient import TestClient
 
 
+def test_notifications_requires_token(client: TestClient) -> None:
+    response = client.get("/api/v1/notifications?filter=all&limit=50")
+
+    assert response.status_code == 401
+    assert response.json() == {
+        "error": "UNAUTHORIZED",
+        "message": "Token manquant ou expire.",
+    }
+
+
 def test_notifications_crud_flow(client: TestClient, admin_headers: dict[str, str]) -> None:
     create_response = client.post(
         "/api/v1/notifications",

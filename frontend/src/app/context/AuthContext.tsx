@@ -5,6 +5,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
+import { useLocation } from "react-router";
 
 import { authApi, type ApiUser } from "../lib/api";
 import {
@@ -14,6 +15,7 @@ import {
   subscribeToAuthSessionChanges,
   writeStoredSession,
 } from "../lib/auth-session";
+import { isPublicAppPath } from "../lib/roles";
 
 interface LoginInput {
   email: string;
@@ -36,6 +38,7 @@ interface AuthContextValue {
   isAuthenticated: boolean;
   isLoading: boolean;
   login: (input: LoginInput) => Promise<ApiUser>;
+  loginAdmin: (input: LoginInput) => Promise<ApiUser>;
   register: (input: RegisterInput) => Promise<ApiUser>;
   logout: () => void;
   refreshCurrentUser: () => Promise<void>;
@@ -53,6 +56,7 @@ const AuthContext =
 authContextGlobal.__fleetconnect_auth_context__ = AuthContext;
 
 export function AuthProvider({ children }: { children: ReactNode }) {
+  const location = useLocation();
   const [user, setUser] = useState<ApiUser | null>(null);
   const [token, setToken] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -67,6 +71,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     let isMounted = true;
+    const pathname = location.pathname;
+    const publicPath = isPublicAppPath(pathname);
 
     async function restoreSession(): Promise<void> {
       const storedSession = readStoredSession();
@@ -81,6 +87,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (isMounted) {
         setToken(storedSession.accessToken);
         setUser(storedSession.user);
+      }
+
+      if (publicPath) {
+        if (isMounted) {
+          setIsLoading(false);
+        }
+        return;
+      }
+
+      if (isMounted) {
+        setIsLoading(true);
       }
 
       try {
@@ -109,10 +126,25 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return () => {
       isMounted = false;
     };
-  }, []);
+  }, [location.pathname]);
 
   const login = async ({ email, password, remember }: LoginInput): Promise<ApiUser> => {
     const response = await authApi.login({ email, password });
+    const session = {
+      accessToken: response.access_token,
+      refreshToken: response.refresh_token,
+      user: response.user,
+    };
+
+    writeStoredSession(session, remember);
+    setToken(session.accessToken);
+    setUser(session.user);
+
+    return session.user;
+  };
+
+  const loginAdmin = async ({ email, password, remember }: LoginInput): Promise<ApiUser> => {
+    const response = await authApi.adminLogin({ email, password });
     const session = {
       accessToken: response.access_token,
       refreshToken: response.refresh_token,
@@ -187,6 +219,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         isAuthenticated: Boolean(user && token),
         isLoading,
         login,
+        loginAdmin,
         register,
         logout,
         refreshCurrentUser,

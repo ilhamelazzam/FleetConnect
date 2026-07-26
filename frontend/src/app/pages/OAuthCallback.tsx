@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useNavigate } from "react-router";
 
 import { writeStoredSession, type StoredSession } from "../lib/auth-session";
+import { getDefaultAuthenticatedPath } from "../lib/roles";
 
 function decodeSessionPayload(rawPayload: string): StoredSession {
   const normalizedPayload = rawPayload.replace(/-/g, "+").replace(/_/g, "/");
@@ -34,7 +35,7 @@ export default function OAuthCallback() {
 
       const session = decodeSessionPayload(payload);
       writeStoredSession(session, true);
-      navigate("/dashboard", { replace: true });
+      navigate(getDefaultAuthenticatedPath(session.user), { replace: true });
     } catch {
       setErrorMessage("Connexion OAuth invalide. Reessayez depuis la page de connexion.");
       navigate("/login?oauth_error=Connexion OAuth invalide. Reessayez.", {

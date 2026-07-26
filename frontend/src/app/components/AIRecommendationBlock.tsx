@@ -36,7 +36,7 @@ export default function AIRecommendationBlock({
   severityLabel,
   riskTypeLabel,
   scoreLabel,
-  title = "Recommandation IA",
+  title = "Suggestion prioritaire",
   compact = false,
   previewLength = 148,
   defaultExpanded = false,

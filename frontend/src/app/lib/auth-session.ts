@@ -8,9 +8,13 @@ interface StoredSessionUser {
   email: string;
   photo_url: string | null;
   role: string;
+  company_id: number | null;
+  company_name: string | null;
   department_id: number | null;
+  department_name: string | null;
   job_profile: string | null;
   is_active: boolean;
+  status: string;
   updated_at: string;
   last_login_at: string | null;
   created_at: string;

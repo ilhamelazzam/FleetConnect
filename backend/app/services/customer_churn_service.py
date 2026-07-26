@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import csv
+import logging
 import threading
 import unicodedata
 from collections import defaultdict
@@ -8,7 +9,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from app.core.config import get_settings
+from app.core.config import AI_INPUT_DIR, AI_OUTPUT_DIR, ResolvedDataSource, get_settings
 
 UNKNOWN_VALUE = "Inconnu"
 RISK_LEVEL_ORDER = ("Critique", "Eleve", "Moyen", "Faible")
@@ -25,20 +26,9 @@ PRICE_RANGE_ORDER = (
     "800 MAD et plus",
 )
 BOOLEAN_FILTER_OPTIONS = ["Yes", "No"]
-DEFAULT_CUSTOMER_CHURN_INPUT_CSV_PATH = (
-    Path(__file__).resolve().parents[3]
-    / "ai"
-    / "data"
-    / "input"
-    / "WA_Fn-UseC_-Telco-Customer-Churn.csv"
-)
-DEFAULT_CUSTOMER_CHURN_OUTPUT_CSV_PATH = (
-    Path(__file__).resolve().parents[3]
-    / "ai"
-    / "data"
-    / "output"
-    / "fleet_ai_results_morocco.csv"
-)
+DEFAULT_CUSTOMER_CHURN_INPUT_CSV_PATH = AI_INPUT_DIR / "WA_Fn-UseC_-Telco-Customer-Churn.csv"
+DEFAULT_CUSTOMER_CHURN_OUTPUT_CSV_PATH = AI_OUTPUT_DIR / "fleet_ai_results_morocco.csv"
+CUSTOMER_CHURN_LOGGER = logging.getLogger("app.customer_churn")
 
 
 @dataclass(slots=True)
@@ -63,30 +53,22 @@ def clear_customer_churn_cache() -> None:
         _cache.rows = None
 
 
+def _resolve_input_csv_source() -> ResolvedDataSource:
+    return get_settings().resolve_customer_churn_input_source()
+
+
+def _resolve_output_csv_source() -> ResolvedDataSource:
+    return get_settings().resolve_customer_churn_output_source()
+
+
 def _resolve_input_csv_path() -> Path:
-    settings = get_settings()
-    configured_path = settings.customer_churn_input_csv_path
-
-    if configured_path:
-        candidate = Path(configured_path)
-        if not candidate.is_absolute():
-            candidate = Path(__file__).resolve().parents[3] / candidate
-        return candidate
-
-    return DEFAULT_CUSTOMER_CHURN_INPUT_CSV_PATH
+    source = _resolve_input_csv_source()
+    return source.path or source.configured_path or DEFAULT_CUSTOMER_CHURN_INPUT_CSV_PATH
 
 
 def _resolve_output_csv_path() -> Path:
-    settings = get_settings()
-    configured_path = settings.customer_churn_output_csv_path
-
-    if configured_path:
-        candidate = Path(configured_path)
-        if not candidate.is_absolute():
-            candidate = Path(__file__).resolve().parents[3] / candidate
-        return candidate
-
-    return DEFAULT_CUSTOMER_CHURN_OUTPUT_CSV_PATH
+    source = _resolve_output_csv_source()
+    return source.path or source.configured_path or DEFAULT_CUSTOMER_CHURN_OUTPUT_CSV_PATH
 
 
 def _parse_float(raw_value: Any, default: float = 0.0) -> float:
@@ -284,11 +266,29 @@ def _parse_output_rows(csv_path: Path) -> list[dict[str, str]]:
 
 
 def _load_customer_churn_rows() -> list[dict[str, Any]]:
-    input_csv_path = _resolve_input_csv_path()
-    output_csv_path = _resolve_output_csv_path()
+    input_source = _resolve_input_csv_source()
+    output_source = _resolve_output_csv_source()
+    input_csv_path = input_source.path or input_source.configured_path or DEFAULT_CUSTOMER_CHURN_INPUT_CSV_PATH
+    output_csv_path = output_source.path
 
-    if not output_csv_path.exists():
-        raise FileNotFoundError(f"Customer churn CSV not found at {output_csv_path}")
+    if output_csv_path is None:
+        CUSTOMER_CHURN_LOGGER.warning(
+            "event=csv_source_missing source=%s preferred=%s searched=%s configured_path=%s",
+            output_source.key,
+            output_source.preferred_name,
+            [str(path) for path in output_source.searched_paths],
+            str(output_source.configured_path) if output_source.configured_path else None,
+        )
+        return []
+
+    if input_source.path is None:
+        CUSTOMER_CHURN_LOGGER.warning(
+            "event=csv_source_missing source=%s preferred=%s searched=%s configured_path=%s",
+            input_source.key,
+            input_source.preferred_name,
+            [str(path) for path in input_source.searched_paths],
+            str(input_source.configured_path) if input_source.configured_path else None,
+        )
 
     input_mtime = input_csv_path.stat().st_mtime if input_csv_path.exists() else None
     output_mtime = output_csv_path.stat().st_mtime
@@ -303,8 +303,19 @@ def _load_customer_churn_rows() -> list[dict[str, Any]]:
         ):
             return _cache.rows
 
-    raw_rows = _parse_input_rows(input_csv_path)
-    output_rows = _parse_output_rows(output_csv_path)
+    try:
+        raw_rows = _parse_input_rows(input_csv_path)
+        output_rows = _parse_output_rows(output_csv_path)
+    except Exception as exc:
+        CUSTOMER_CHURN_LOGGER.warning(
+            "event=csv_source_read_failed source=%s path=%s searched=%s error=%s",
+            output_source.key,
+            str(output_csv_path),
+            [str(path) for path in output_source.searched_paths],
+            str(exc),
+        )
+        return []
+
     rows = [
         _normalize_customer_churn_row(
             row_index,
@@ -313,6 +324,14 @@ def _load_customer_churn_rows() -> list[dict[str, Any]]:
         )
         for row_index, output_row in enumerate(output_rows, start=1)
     ]
+
+    CUSTOMER_CHURN_LOGGER.info(
+        "event=csv_source_loaded source=%s path=%s rows=%s searched=%s",
+        output_source.key,
+        str(output_csv_path),
+        len(rows),
+        [str(path) for path in output_source.searched_paths],
+    )
 
     with _cache_lock:
         _cache.input_path = input_csv_path
@@ -507,6 +526,11 @@ def _serialize_customer(row: dict[str, Any]) -> dict[str, Any]:
         "total_cost_mad": row["total_cost_mad"],
         "plan": row["plan"],
         "price_range_label": row["price_range_label"],
+        "roaming_flag": row["roaming_flag"],
+        "data_usage_gb": row["data_usage_gb"],
+        "quota_gb": row["quota_gb"],
+        "over_quota_flag": row["over_quota_flag"],
+        "anomaly_flag": row["anomaly_flag"],
         "risk_proba": row["risk_proba"],
         "risk_score_100": row["risk_score_100"],
         "risk_level": row["risk_level"],
@@ -709,4 +733,116 @@ def get_customer_churn_reports(**filters: str | None) -> dict[str, Any]:
             )
             if row["revenue_at_risk_mad"] > 0
         ][:10],
+    }
+
+
+def _build_consumption_kpis(rows: list[dict[str, Any]]) -> dict[str, Any]:
+    total_lines = len(rows)
+    total_data_usage = sum(row["data_usage_gb"] for row in rows)
+    total_quota = sum(row["quota_gb"] for row in rows)
+
+    return {
+        "total_lines": total_lines,
+        "total_monthly_cost_mad": round(sum(row["monthly_cost_mad"] for row in rows), 2),
+        "total_future_cost_mad": round(sum(row["future_cost_mad"] for row in rows), 2),
+        "total_future_cost_pred_mad": round(
+            sum(row["future_cost_pred_mad"] for row in rows),
+            2,
+        ),
+        "total_data_usage_gb": round(total_data_usage, 2),
+        "average_data_usage_gb": round(total_data_usage / total_lines, 2) if total_lines else 0.0,
+        "average_quota_gb": round(total_quota / total_lines, 2) if total_lines else 0.0,
+        "over_quota_lines": sum(1 for row in rows if row["over_quota_flag"]),
+        "roaming_lines": sum(1 for row in rows if row["roaming_flag"]),
+        "anomaly_lines": sum(1 for row in rows if row["anomaly_flag"]),
+        "high_risk_lines": sum(1 for row in rows if row["risk_level"] in {"Critique", "Eleve"}),
+        "average_risk_score": round(
+            sum(row["risk_score_100"] for row in rows) / total_lines,
+            2,
+        )
+        if total_lines
+        else 0.0,
+    }
+
+
+def _build_consumption_breakdown(
+    rows: list[dict[str, Any]],
+    *,
+    group_key: str,
+) -> list[dict[str, Any]]:
+    grouped_rows: defaultdict[str, list[dict[str, Any]]] = defaultdict(list)
+    for row in rows:
+        grouped_rows[row[group_key]].append(row)
+
+    return [
+        {
+            "label": label,
+            "line_count": len(grouped_rows[label]),
+            "total_monthly_cost_mad": round(
+                sum(current_row["monthly_cost_mad"] for current_row in grouped_rows[label]),
+                2,
+            ),
+            "total_future_cost_mad": round(
+                sum(current_row["future_cost_pred_mad"] for current_row in grouped_rows[label]),
+                2,
+            ),
+            "total_data_usage_gb": round(
+                sum(current_row["data_usage_gb"] for current_row in grouped_rows[label]),
+                2,
+            ),
+            "over_quota_lines": sum(
+                1 for current_row in grouped_rows[label] if current_row["over_quota_flag"]
+            ),
+            "anomaly_lines": sum(
+                1 for current_row in grouped_rows[label] if current_row["anomaly_flag"]
+            ),
+            "average_risk_score": round(
+                sum(current_row["risk_score_100"] for current_row in grouped_rows[label])
+                / len(grouped_rows[label]),
+                2,
+            ),
+        }
+        for label in sorted(
+            grouped_rows,
+            key=lambda current_label: sum(
+                item["monthly_cost_mad"] for item in grouped_rows[current_label]
+            ),
+            reverse=True,
+        )
+    ]
+
+
+def get_customer_churn_consumption(**filters: str | None) -> dict[str, Any]:
+    rows = _filter_rows(**filters)
+    top_consumers = sorted(
+        rows,
+        key=lambda row: (
+            -row["monthly_cost_mad"],
+            -row["data_usage_gb"],
+            -row["risk_score_100"],
+            row["customer_row_id"],
+        ),
+    )[:10]
+    priority_lines = sorted(
+        [
+            row
+            for row in rows
+            if row["over_quota_flag"] or row["anomaly_flag"] or row["risk_level"] in {"Critique", "Eleve"}
+        ],
+        key=lambda row: (
+            -int(row["over_quota_flag"]),
+            -int(row["anomaly_flag"]),
+            _risk_rank(row["risk_level"]),
+            -row["monthly_cost_mad"],
+            row["customer_row_id"],
+        ),
+    )[:10]
+
+    return {
+        "kpis": _build_consumption_kpis(rows),
+        "cost_by_operator": _build_consumption_breakdown(rows, group_key="operator"),
+        "cost_by_department": _build_consumption_breakdown(rows, group_key="department"),
+        "usage_by_department": _build_consumption_breakdown(rows, group_key="department"),
+        "top_consumers": [_serialize_prediction(row) for row in top_consumers],
+        "priority_lines": [_serialize_prediction(row) for row in priority_lines],
     }

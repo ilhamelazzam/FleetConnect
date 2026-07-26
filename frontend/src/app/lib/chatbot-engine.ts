@@ -23,12 +23,15 @@ export interface TelecomAssistantReply {
 }
 
 export const assistantQuestionSuggestions = [
-  "Pourquoi Maroc Telecom est en depassement ?",
-  "Combien de lignes sont libres ?",
+  "Que faire cette semaine ?",
+  "Compare Finance et IT",
+  "Quel budget risque de deraper le mois prochain ?",
+  "Quels pays roaming concentrent le plus de risque ?",
   "Quels forfaits sont trop chers ?",
-  "Quelle est la meilleure optimisation ?",
   "Montre-moi les lignes critiques",
-  "Quel departement consomme le plus ?",
+  "Quelle est la meilleure optimisation ?",
+  "Pourquoi Maroc Telecom est en depassement ?",
+  "Plan d'action IA hebdomadaire",
 ];
 
 function normalizeText(value: string): string {
@@ -93,13 +96,13 @@ function humanizeDatasetSource(source: string): string {
   }
 
   if (kind === "api") {
-    return `API metier ${label}`;
+    return `Donnees synchronisees ${label}`;
   }
   if (kind === "mock") {
-    return `Fallback local ${label}`;
+    return `Copie locale ${label}`;
   }
   if (kind === "derive") {
-    return `Calcul derive ${label}`;
+    return `Calcul interne ${label}`;
   }
 
   return source;
@@ -121,8 +124,8 @@ function enrichReply(
     titleHint,
     sources: [
       `Angle: ${focus}`,
-      dataset.usingMock ? "Mode hybride: API + fallback local" : "Mode temps reel: API metier",
-      `Contexte charge le ${formatLoadedAt(dataset.loadedAt)}`,
+      dataset.usingMock ? "Sources mixtes: donnees synchronisees + secours local" : "Donnees synchronisees en temps reel",
+      `Donnees mises a jour le ${formatLoadedAt(dataset.loadedAt)}`,
       ...dataset.sources.slice(0, 3).map((source) => humanizeDatasetSource(source)),
     ],
   };
@@ -256,8 +259,8 @@ function getGreetingReply(dataset: TelecomAssistantDataset): TelecomAssistantRep
     text: "Je peux vous aider a analyser votre flotte telecom sans quitter l'application.",
     bullets: [
       `${dataset.occupationStats.total} lignes suivies, dont ${dataset.occupationStats.total_libre} libres`,
-      `${dataset.lineStats.total_ai_alerts} alertes IA actuellement visibles`,
-      `${dataset.recommendations.length} recommandations exploitables cote optimisation`,
+      `${dataset.lineStats.total_ai_alerts} alertes importantes actuellement visibles`,
+      `${dataset.recommendations.length} actions recommandees pour optimiser les couts`,
     ],
     recommendation: "Commencez par une question budget, alertes, lignes critiques ou optimisation forfaits.",
     suggestions: assistantQuestionSuggestions,
@@ -276,7 +279,7 @@ function getDashboardSummaryReply(dataset: TelecomAssistantDataset): TelecomAssi
     text: "Voici la synthese business la plus utile a lire en premier.",
     bullets: [
       `${dataset.occupationStats.total_libre} lignes libres et ${dataset.occupationStats.total_suspendues} suspendues sur ${dataset.occupationStats.total} lignes`,
-      `${dataset.lineStats.critical_ai_alerts} alertes critiques sur ${dataset.lineStats.total_ai_alerts} alertes IA`,
+      `${dataset.lineStats.critical_ai_alerts} alertes critiques sur ${dataset.lineStats.total_ai_alerts} alertes importantes`,
       `${topOperator?.label ?? "Operateur principal"} concentre ${formatMad(topOperator?.totalEstimatedPriceMad ?? 0)} de budget estime`,
       `${topDepartment?.label ?? "Departement principal"} est le departement le plus consommateur avec ${formatMad(topDepartment?.totalEstimatedPriceMad ?? 0)}`,
     ],
@@ -442,8 +445,8 @@ function getBestOptimizationReply(dataset: TelecomAssistantDataset): TelecomAssi
     return {
       text: "Je n'ai pas encore de scenario d'optimisation exploitable.",
       bullets: [
-        "Les recommandations IA ne sont pas disponibles pour le moment",
-        "Les donnees budgetaires sont peut-etre partielles",
+        "Les actions recommandees ne sont pas disponibles pour le moment",
+        "Les donnees de depenses sont peut-etre partielles",
       ],
       recommendation: "Relancez la synchronisation puis reouvrez les pages Consommations ou Forfaits.",
       suggestions: assistantQuestionSuggestions,
@@ -456,7 +459,7 @@ function getBestOptimizationReply(dataset: TelecomAssistantDataset): TelecomAssi
       `${bestRecommendation.title}`,
       `${bestRecommendation.operator} - ${bestRecommendation.department}`,
       `Gain estime ${formatMad(bestRecommendation.estimatedPriceMad)} avec confiance ${bestRecommendation.confidenceScore}%`,
-      `Risque budget ${formatScore(bestRecommendation.budgetRiskScore)}`,
+      `Niveau de risque ${formatScore(bestRecommendation.budgetRiskScore)}`,
     ],
     recommendation: bestRecommendation.recommendation,
     ctaLabel: "Ouvrir Forfaits",
@@ -505,7 +508,7 @@ function getCriticalLinesReply(dataset: TelecomAssistantDataset): TelecomAssista
     suggestions: [
       "Combien de lignes sont libres ?",
       "Quels forfaits sont trop chers ?",
-      "Explique-moi les alertes IA",
+      "Explique-moi les alertes importantes",
     ],
   };
 }
@@ -550,7 +553,7 @@ function getAlertsReply(dataset: TelecomAssistantDataset): TelecomAssistantReply
   const topAlert = [...dataset.alerts].sort((left, right) => right.score - left.score)[0];
 
   return {
-    text: "Les alertes IA se concentrent actuellement sur les poches a plus fort impact budgetaire ou risque d'usage.",
+    text: "Les alertes se concentrent actuellement sur les zones qui pesent le plus sur les couts ou les usages.",
     bullets: [
       `${dataset.lineStats.critical_ai_alerts} alertes critiques sur ${dataset.lineStats.total_ai_alerts} alertes detectees`,
       ...dataset.alerts.slice(0, 3).map((alert) => {
@@ -577,7 +580,7 @@ function getGuidanceReply(normalizedQuestion: string): TelecomAssistantReply {
       text: "Pour piloter les lignes, la meilleure entree est la page Lignes.",
       bullets: [
         "Filtrer par statut libre, attribuee, suspendue ou inactive",
-        "Voir les usages et les actions CRUD au meme endroit",
+        "Voir les usages et les actions de gestion au meme endroit",
         "Repérer rapidement les lignes critiques ou libres",
       ],
       recommendation: "Utilisez Lignes pour les actions operationnelles quotidiennes.",
@@ -598,10 +601,10 @@ function getGuidanceReply(normalizedQuestion: string): TelecomAssistantReply {
     },
     {
       keywords: ["alerte", "alertes", "anomalie", "fraude"],
-      text: "Pour comprendre les alertes IA, la page Anomalies est la bonne entree.",
+      text: "Pour comprendre les alertes, la page Anomalies est la bonne entree.",
       bullets: [
         "Prioriser les alertes critiques",
-        "Lire la recommandation IA associee",
+        "Lire l'action conseillee associee",
         "Isoler rapidement les zones ou lignes a risque",
       ],
       recommendation: "Anomalies permet d'aller du signal a l'action sans perdre le contexte.",
@@ -610,13 +613,13 @@ function getGuidanceReply(normalizedQuestion: string): TelecomAssistantReply {
     },
     {
       keywords: ["dashboard", "tableau de bord", "resume", "synthese"],
-      text: "Pour une lecture executive, ouvrez le Dashboard decisionnel.",
+      text: "Pour une vue d'ensemble, ouvrez le tableau de bord.",
       bullets: [
         "Vue d'ensemble budget, risques et priorites",
         "Top actions business a presenter rapidement",
-        "Croisement consommation, churn et fraude",
+        "Croisement depenses, risques client et appels suspects",
       ],
-      recommendation: "Dashboard est ideal pour resumer la situation avant une decision.",
+      recommendation: "Le tableau de bord est ideal pour resumer la situation avant une decision.",
       ctaLabel: "Ouvrir Dashboard",
       ctaPath: "/dashboard",
     },
@@ -639,7 +642,7 @@ function getFallbackReply(): TelecomAssistantReply {
       "Budget operateur ou departement",
       "Etat des lignes libres ou critiques",
       "Forfaits trop chers ou meilleure optimisation",
-      "Explication des alertes IA",
+      "Explication des alertes importantes",
     ],
     recommendation: "Essayez une question concrete comme: 'Quels forfaits sont trop chers ?'",
     suggestions: assistantQuestionSuggestions,

@@ -80,31 +80,31 @@ const PAGE_SIZE = 5;
 const predictionWidgets: DashboardWidgetDefinition[] = [
   {
     id: "kpis",
-    label: "KPI churn",
-    description: "Clients a risque, taux churn, revenu expose et score moyen.",
+    label: "Indicateurs de risque client",
+    description: "Clients a suivre, taux de depart, revenu a proteger et score moyen.",
     defaultVisible: true,
   },
   {
     id: "impact-scenario",
-    label: "Scenario d'impact",
-    description: "Projection de retention et revenu sauvegarde.",
+    label: "Impact estime",
+    description: "Projection des clients conserves et du revenu protege.",
     defaultVisible: true,
   },
   {
     id: "ai-insights",
-    label: "Insights IA",
-    description: "Synthese explicable des segments churn prioritaires.",
+    label: "Points d'attention",
+    description: "Resume des segments clients a traiter en priorite.",
     defaultVisible: true,
   },
   {
     id: "filters",
     label: "Filtres",
-    description: "Recherche et filtres de priorisation client.",
+    description: "Recherche et filtres pour cibler les clients prioritaires.",
     defaultVisible: true,
   },
   {
     id: "secondary-charts",
-    label: "Graphiques churn",
+    label: "Graphiques de risque",
     description: "Graphiques par segment, revenu et departement.",
     defaultVisible: false,
   },
@@ -460,14 +460,14 @@ export default function Predictions() {
       <div className="space-y-6 p-6">
         <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
           <div>
-            <h1 className="mb-2 text-2xl font-bold text-[#0F172A]">Predictions IA churn</h1>
+            <h1 className="mb-2 text-2xl font-bold text-[#0F172A]">Previsions et alertes</h1>
             <p className="max-w-4xl text-[#64748B]">
-              Priorisation des clients a risque avec actions de retention explicables, simulation d'impact et tri IA orienté revenu.
+              Reperez les clients a suivre, estimez l'impact des actions et priorisez vos decisions pour proteger le revenu.
             </p>
           </div>
           <div className="flex items-center gap-2 rounded-xl bg-gradient-to-r from-[#0F172A] to-[#2D6CDF] px-4 py-2.5 text-white shadow-lg shadow-blue-500/20">
             <Brain className="h-5 w-5" />
-            <span className="font-medium">Modele churn actif</span>
+            <span className="font-medium">Suivi du risque client actif</span>
           </div>
         </div>
 
@@ -482,7 +482,7 @@ export default function Predictions() {
           visibility={dashboardPreferences.visibility}
           visibleCount={dashboardPreferences.visibleCount}
           onChange={dashboardPreferences.setWidgetVisible}
-          onReset={dashboardPreferences.resetVisibility}
+          onReset={dashboardPreferences.showAllWidgets}
         />
 
         <DashboardSection isVisible={dashboardPreferences.isWidgetVisible("kpis")}>
@@ -504,7 +504,7 @@ export default function Predictions() {
             <p className="text-4xl font-bold text-[#0F172A]">
               {isLoading ? "--" : `${(overview?.kpis.churn_rate_pct ?? 0).toFixed(1)}%`}
             </p>
-            <p className="mt-2 text-sm text-[#64748B]">Churn reel sur le perimetre</p>
+            <p className="mt-2 text-sm text-[#64748B]">Departs constates sur le perimetre</p>
           </div>
 
           <div className="rounded-2xl border border-gray-200 bg-white p-6">
@@ -536,9 +536,9 @@ export default function Predictions() {
           <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
             <div>
               <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[#6D28D9]">Impact global si actions appliquees</p>
-              <h2 className="mt-2 text-2xl font-semibold text-[#0F172A]">Scenario de retention pilote par IA</h2>
+              <h2 className="mt-2 text-2xl font-semibold text-[#0F172A]">Impact estime de vos actions</h2>
               <p className="mt-2 max-w-3xl text-sm leading-6 text-[#64748B]">
-                Projection consolidee a partir des clients critiques, du revenu expose et des actions recommandees sur la vue courante.
+                Estimation du resultat attendu a partir des clients les plus sensibles, du revenu a proteger et des actions conseillees sur la vue courante.
               </p>
             </div>
             <Badge className="rounded-full border-violet-200 bg-violet-50 px-3 py-1 text-[#6D28D9]">
@@ -548,7 +548,7 @@ export default function Predictions() {
 
           <div className="mt-6 grid grid-cols-1 gap-4 md:grid-cols-3">
             <div className="rounded-2xl border border-white bg-white/90 p-5">
-              <p className="text-xs uppercase tracking-[0.18em] text-[#64748B]">Churn reduit</p>
+              <p className="text-xs uppercase tracking-[0.18em] text-[#64748B]">Risque reduit</p>
               <p className="mt-3 text-3xl font-bold text-[#16A34A]">{isLoading ? "--" : formatPercent(globalImpact.churnReducedPct)}</p>
             </div>
             <div className="rounded-2xl border border-white bg-white/90 p-5">
@@ -567,8 +567,8 @@ export default function Predictions() {
         <div className="rounded-3xl border border-gray-200 bg-white p-6">
           <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
             <div>
-              <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[#6D28D9]">Insights IA</p>
-              <h2 className="mt-2 text-2xl font-semibold text-[#0F172A]">Resume intelligent du risque churn</h2>
+              <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[#6D28D9]">Points d'attention</p>
+              <h2 className="mt-2 text-2xl font-semibold text-[#0F172A]">Resume du risque client</h2>
               <p className="mt-2 max-w-3xl text-sm leading-6 text-[#64748B]">
                 Le moteur synthétise les segments critiques puis propose l'action la plus utile pour retenir la valeur.
               </p>
@@ -583,7 +583,7 @@ export default function Predictions() {
             >
               <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[#64748B]">Clients a risque eleve</p>
               <p className="mt-3 text-xl font-semibold text-[#0F172A]">{highRiskCount.toLocaleString("fr-FR")}</p>
-              <p className="mt-2 text-sm leading-6 text-[#64748B]">Population prioritaire du moteur churn.</p>
+              <p className="mt-2 text-sm leading-6 text-[#64748B]">Clients a traiter en priorite.</p>
               <div className="mt-4 rounded-2xl border border-violet-100 bg-violet-50/70 p-3 text-sm text-[#4C1D95]">
                 Traiter d'abord les clients P1 pour proteger le revenu mensuel.
               </div>
@@ -752,7 +752,7 @@ export default function Predictions() {
         <DashboardSection
           isVisible={dashboardPreferences.isWidgetVisible("secondary-charts")}
           collapsible
-          title="Graphiques churn secondaires"
+          title="Graphiques de risque complementaires"
           description="Analyse par segment, revenu et departement, disponible a la demande."
           className="rounded-3xl border border-gray-200 bg-white p-6"
           contentClassName="pt-5"
@@ -761,7 +761,7 @@ export default function Predictions() {
           <div className="rounded-2xl border border-gray-200 bg-white p-6">
             <div className="mb-4 flex items-center justify-between">
               <div>
-                <h2 className="text-lg font-semibold text-[#0F172A]">Churn par segment</h2>
+                <h2 className="text-lg font-semibold text-[#0F172A]">Risque de depart par segment</h2>
                 <p className="mt-1 text-sm text-[#64748B]">Cliquer pour filtrer le contrat dominant.</p>
               </div>
               <Building2 className="h-5 w-5 text-[#DC2626]" />
@@ -794,7 +794,7 @@ export default function Predictions() {
           <div className="rounded-2xl border border-gray-200 bg-white p-6">
             <div className="mb-4 flex items-center justify-between">
               <div>
-                <h2 className="text-lg font-semibold text-[#0F172A]">Churn par revenu</h2>
+                <h2 className="text-lg font-semibold text-[#0F172A]">Risque et revenu</h2>
                 <p className="mt-1 text-sm text-[#64748B]">Chaque barre filtre un palier de valeur.</p>
               </div>
               <Wallet className="h-5 w-5 text-[#16A34A]" />
@@ -827,7 +827,7 @@ export default function Predictions() {
           <div className="rounded-2xl border border-gray-200 bg-white p-6">
             <div className="mb-4 flex items-center justify-between">
               <div>
-                <h2 className="text-lg font-semibold text-[#0F172A]">Churn par departement</h2>
+                <h2 className="text-lg font-semibold text-[#0F172A]">Risque par departement</h2>
                 <p className="mt-1 text-sm text-[#64748B]">Le clic applique le filtre departement.</p>
               </div>
               <Users className="h-5 w-5 text-[#2D6CDF]" />
@@ -896,7 +896,7 @@ export default function Predictions() {
                           {formatCustomerRiskLabel(customer.risk_level)}
                         </Badge>
                         <Badge className={getChurnClasses(customer.predicted_churn)}>
-                          Prediction {formatChurnLabel(customer.predicted_churn)}
+                          Risque estime {formatChurnLabel(customer.predicted_churn)}
                         </Badge>
                         <Badge className={`${operatorStyles.bgClass} ${operatorStyles.textClass}`}>
                           {customer.operator}
@@ -959,7 +959,7 @@ export default function Predictions() {
 
                       <AIRiskInsightCard
                         riskId={customer.risk_id}
-                        moduleLabel="Predictions IA"
+                        moduleLabel="Previsions et alertes"
                         title={customer.title}
                         severity={customer.risk_level}
                         description={customer.actionSummary}

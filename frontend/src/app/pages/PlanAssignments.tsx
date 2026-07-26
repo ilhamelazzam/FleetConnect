@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useState } from "react";
-import { Link } from "react-router";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { Link, useLocation, useNavigate } from "react-router";
 import { toast } from "sonner";
 import {
   BadgeCheck,
@@ -10,6 +10,7 @@ import {
   ChevronRight,
   CirclePause,
   Eye,
+  MapPinned,
   Package,
   Pencil,
   Plus,
@@ -53,6 +54,7 @@ import {
   TableRow,
 } from "../components/ui/table";
 import { useAuth } from "../context/AuthContext";
+import { publishFilterPanelState, subscribeToFilterPanelToggle } from "../lib/filter-panel";
 import {
   ApiError,
   fleetAccessApi,
@@ -63,13 +65,14 @@ import {
   type ApiPlan,
   type ApiUser,
 } from "../lib/api";
+import { buildSearchUrl, getPageSearchQuery } from "../lib/page-search";
 import {
   getPlanActivationActionLabel,
   getPlanActivationStatusClasses,
   getPlanActivationStatusLabel,
   isPlanActive,
 } from "../lib/plan-activation";
-import { canApplyOperationalChanges, isAdminUser } from "../lib/roles";
+import { canApplyOperationalChanges, canManageUsers } from "../lib/roles";
 
 const API_PAGE_SIZE = 100;
 const DEFAULT_PAGE_SIZE = 8;
@@ -270,7 +273,10 @@ async function fetchAllPlans(token: string): Promise<ApiPlan[]> {
 }
 
 export default function PlanAssignments() {
+  const location = useLocation();
+  const navigate = useNavigate();
   const { token, user } = useAuth();
+  const filtersCardRef = useRef<HTMLDivElement | null>(null);
   const [phoneLines, setPhoneLines] = useState<ApiPhoneLine[]>([]);
   const [plans, setPlans] = useState<ApiPlan[]>([]);
   const [users, setUsers] = useState<ApiUser[]>([]);
@@ -278,12 +284,13 @@ export default function PlanAssignments() {
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
-  const [searchQuery, setSearchQuery] = useState("");
+  const [searchQuery, setSearchQuery] = useState(getPageSearchQuery(location.search));
   const [selectedPlanType, setSelectedPlanType] = useState("all");
   const [selectedStatus, setSelectedStatus] = useState("all");
   const [selectedDepartment, setSelectedDepartment] = useState("all");
   const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE);
   const [currentPage, setCurrentPage] = useState(1);
+  const [isFilterHighlightVisible, setIsFilterHighlightVisible] = useState(false);
   const [isImportDialogOpen, setIsImportDialogOpen] = useState(false);
   const [employeesRefreshKey, setEmployeesRefreshKey] = useState(0);
   const [isCreateDrawerOpen, setIsCreateDrawerOpen] = useState(false);
@@ -297,7 +304,7 @@ export default function PlanAssignments() {
   const [confirmAction, setConfirmAction] = useState<{ lineId: number; type: AssignmentAction } | null>(null);
 
   const canMutateAssignments = canApplyOperationalChanges(user);
-  const canCreateCollaborator = isAdminUser(user);
+  const canCreateCollaborator = canManageUsers(user);
 
   useEffect(() => {
     let isMounted = true;
@@ -352,6 +359,11 @@ export default function PlanAssignments() {
   useEffect(() => {
     setCurrentPage(1);
   }, [searchQuery, selectedPlanType, selectedStatus, selectedDepartment, pageSize]);
+
+  useEffect(() => {
+    const nextSearch = getPageSearchQuery(location.search);
+    setSearchQuery((currentValue) => (currentValue === nextSearch ? currentValue : nextSearch));
+  }, [location.search]);
 
   const userByName = useMemo(() => {
     const map = new Map<string, ApiUser>();
@@ -467,6 +479,14 @@ export default function PlanAssignments() {
 
   const totalPages = Math.max(1, Math.ceil(filteredRows.length / pageSize));
   const currentRows = filteredRows.slice((currentPage - 1) * pageSize, currentPage * pageSize);
+  const activeFiltersCount = useMemo(() => {
+    let count = 0;
+    if (searchQuery.trim() !== "") count += 1;
+    if (selectedPlanType !== "all") count += 1;
+    if (selectedStatus !== "all") count += 1;
+    if (selectedDepartment !== "all") count += 1;
+    return count;
+  }, [searchQuery, selectedDepartment, selectedPlanType, selectedStatus]);
   const totalAssigned = rows.length;
   const activeAssigned = rows.filter((row) => row.status === "active").length;
   const suspendedAssigned = rows.filter((row) => row.status === "suspended").length;
@@ -481,6 +501,38 @@ export default function PlanAssignments() {
   useEffect(() => {
     if (currentPage > totalPages) setCurrentPage(totalPages);
   }, [currentPage, totalPages]);
+
+  useEffect(() => {
+    publishFilterPanelState({ activeCount: activeFiltersCount, isOpen: false });
+
+    return () => {
+      publishFilterPanelState({ activeCount: 0, isOpen: false });
+    };
+  }, [activeFiltersCount]);
+
+  useEffect(() => {
+    let highlightTimer: number | null = null;
+
+    const unsubscribe = subscribeToFilterPanelToggle(() => {
+      filtersCardRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+      setIsFilterHighlightVisible(true);
+
+      if (highlightTimer !== null) {
+        window.clearTimeout(highlightTimer);
+      }
+
+      highlightTimer = window.setTimeout(() => {
+        setIsFilterHighlightVisible(false);
+      }, 1800);
+    });
+
+    return () => {
+      if (highlightTimer !== null) {
+        window.clearTimeout(highlightTimer);
+      }
+      unsubscribe();
+    };
+  }, []);
 
   useEffect(() => {
     if (highlightedLineId === null) return undefined;
@@ -550,12 +602,17 @@ export default function PlanAssignments() {
   }
 
   function focusAssignmentOnTable(collaboratorName: string, lineId: number) {
-    setSearchQuery(collaboratorName);
+    handleSearchChange(collaboratorName);
     setSelectedPlanType("all");
     setSelectedStatus("all");
     setSelectedDepartment("all");
     setCurrentPage(1);
     setHighlightedLineId(lineId);
+  }
+
+  function handleSearchChange(value: string) {
+    setSearchQuery(value);
+    navigate(buildSearchUrl(location.pathname, location.search, value), { replace: true });
   }
 
   async function handleCreateCollaborator(values: CollaboratorAssignmentFormValues) {
@@ -795,6 +852,13 @@ export default function PlanAssignments() {
 
         <div className="flex flex-wrap gap-3">
           <Link
+            to="/anomalies"
+            className="inline-flex items-center gap-2 rounded-xl border border-violet-200 bg-violet-50 px-4 py-2.5 text-sm font-medium text-[#6D28D9] transition-all hover:bg-violet-100"
+          >
+            <MapPinned className="h-4 w-4" />
+            Voir Roaming Map
+          </Link>
+          <Link
             to="/forfaits"
             className="inline-flex items-center gap-2 rounded-xl border border-gray-200 bg-white px-4 py-2.5 text-sm font-medium text-[#0F172A] transition-all hover:bg-[#F8FAFC]"
           >
@@ -882,14 +946,21 @@ export default function PlanAssignments() {
             <KPICard title="Departements couverts" value={String(departmentsCovered)} description="Services representes dans la flotte equipee" icon={Building2} color="purple" />
           </div>
 
-          <div className="rounded-[28px] border border-[#DCE5F1] bg-white p-5 shadow-[0_24px_60px_-42px_rgba(15,23,42,0.35)]">
+          <div
+            ref={filtersCardRef}
+            className={`rounded-[28px] border bg-white p-5 shadow-[0_24px_60px_-42px_rgba(15,23,42,0.35)] transition-all duration-300 ${
+              isFilterHighlightVisible
+                ? "border-[#93C5FD] ring-4 ring-[#DBEAFE]"
+                : "border-[#DCE5F1]"
+            }`}
+          >
             <div className="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
               <div className="grid flex-1 grid-cols-1 gap-4 lg:grid-cols-2 xl:grid-cols-[minmax(260px,1.35fr)_repeat(3,minmax(180px,0.9fr))]">
                 <div className="space-y-2">
                   <label htmlFor="plan-assignment-search" className="text-xs font-semibold uppercase tracking-[0.16em] text-[#64748B]">Recherche</label>
                   <div className="relative">
                     <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#94A3B8]" />
-                    <Input id="plan-assignment-search" value={searchQuery} onChange={(event) => setSearchQuery(event.target.value)} placeholder="Nom, email, ligne ou forfait..." className="h-11 rounded-xl border-[#DCE5F1] bg-[#F8FAFC] pl-10" />
+                    <Input id="plan-assignment-search" value={searchQuery} onChange={(event) => handleSearchChange(event.target.value)} placeholder="Nom, email, ligne ou forfait..." className="h-11 rounded-xl border-[#DCE5F1] bg-[#F8FAFC] pl-10" />
                   </div>
                 </div>
 
@@ -958,7 +1029,7 @@ export default function PlanAssignments() {
                 <button
                   type="button"
                   onClick={() => {
-                    setSearchQuery("");
+                    handleSearchChange("");
                     setSelectedPlanType("all");
                     setSelectedStatus("all");
                     setSelectedDepartment("all");

@@ -109,7 +109,7 @@ function buildWhyRisk(customer: ApiCustomerChurnCustomer, averageMonthlyRevenueM
   if (customer.tenure <= 6) reasons.push("faible anciennete");
   if (averageMonthlyRevenueMad > 0 && customer.monthly_cost_mad >= averageMonthlyRevenueMad * 1.15) reasons.push("cout eleve");
   if (normalizedContract === "month-to-month") reasons.push("contrat mensuel instable");
-  if (customer.risk_proba >= 0.75 || customer.predicted_churn) reasons.push("probabilite de churn forte");
+  if (customer.risk_proba >= 0.75 || customer.predicted_churn) reasons.push("risque de depart eleve");
   if (normalizedService === "dsl" || normalizedService === "no internet service") reasons.push("usage faible percu");
   if (normalizedPaymentMethod === "electronic check") reasons.push("mode de paiement sensible");
   if (reasons.length === 0) reasons.push("profil proche des cohortes a surveiller");
@@ -285,7 +285,7 @@ export default function Users() {
         if (isMounted) {
           setOverview(null);
           setCustomers(null);
-          setErrorMessage(normalizeError(error, "Impossible de charger le module clients."));
+          setErrorMessage(normalizeError(error, "Impossible de charger la vue clients."));
         }
       } finally {
         if (isMounted) {
@@ -375,7 +375,7 @@ export default function Users() {
     ? `Prioriser une strategie de retention sur ${topRiskDepartment.label.toLowerCase()} et stabiliser le contrat ${formatContractLabel(
         mostUnstableContract?.label ?? "",
       ).toLowerCase()}.`
-    : "Prioriser les clients a score IA eleve et contacter les profils P1 avant erosion du revenu.";
+    : "Prioriser les clients les plus exposes et contacter les profils P1 avant une perte de revenu.";
   const averageRetentionGainMad =
     visibleCustomers.length === 0
       ? 0
@@ -452,7 +452,7 @@ export default function Users() {
     await wait(650);
     setSimulationReady(true);
     setIsSimulating(false);
-    toast.success("Simulation IA mise a jour", {
+    toast.success("Simulation mise a jour", {
       description: `${formatMadValue(estimatedRecoveredRevenueMad)} recuperables sur la vue courante.`,
     });
   }
@@ -474,7 +474,7 @@ export default function Users() {
         ? previousIds
         : [...previousIds, customer.customer_row_id],
     );
-    toast.success("Action IA appliquee", {
+    toast.success("Action appliquee", {
       description: `${customer.primaryAction} active pour ${customer.customer_id}.`,
     });
   }
@@ -483,9 +483,9 @@ export default function Users() {
     <div className="space-y-6 p-6">
       <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
         <div>
-          <h1 className="mb-2 text-2xl font-bold text-[#0F172A]">Risque client</h1>
+          <h1 className="mb-2 text-2xl font-bold text-[#0F172A]">Clients a surveiller</h1>
           <p className="max-w-4xl text-[#64748B]">
-            Dashboard IA pour detecter, expliquer et traiter les clients a risque de churn avant erosion du revenu.
+            Identifiez les clients a risque de depart et les actions prioritaires pour proteger votre revenu.
           </p>
         </div>
 
@@ -496,7 +496,7 @@ export default function Users() {
             className="inline-flex items-center gap-2 rounded-xl bg-[#2D6CDF] px-4 py-2.5 text-sm font-medium text-white transition-colors hover:bg-[#1D4ED8]"
           >
             <Sparkles className={`h-4 w-4 ${isSimulating ? "animate-spin" : ""}`} />
-            <span>{isSimulating ? "Simulation..." : "Simuler strategie de retention"}</span>
+            <span>{isSimulating ? "Simulation..." : "Tester un plan d'action"}</span>
           </button>
 
           <button
@@ -507,7 +507,7 @@ export default function Users() {
             className="inline-flex items-center gap-2 rounded-xl border border-gray-200 bg-white px-4 py-2.5 text-sm font-medium text-[#64748B] transition-colors hover:bg-[#F8FAFC]"
           >
             <Download className="h-4 w-4" />
-            <span>Exporter</span>
+            <span>Telecharger le rapport</span>
           </button>
 
           <button
@@ -534,7 +534,7 @@ export default function Users() {
         <div className="rounded-3xl border border-blue-100 bg-gradient-to-br from-[#EFF6FF] via-white to-[#F8FAFC] p-6">
           <div className="flex items-center gap-2">
             <Brain className="h-5 w-5 text-[#2D6CDF]" />
-            <h2 className="text-lg font-semibold text-[#0F172A]">Synthese IA churn</h2>
+            <h2 className="text-lg font-semibold text-[#0F172A]">Vue d'ensemble du risque client</h2>
           </div>
 
           <div className="mt-5 grid grid-cols-1 gap-4 md:grid-cols-2">
@@ -557,7 +557,7 @@ export default function Users() {
               </p>
               <p className="mt-2 text-sm text-[#64748B]">
                 {mostUnstableContract
-                  ? `${mostUnstableContract.churn_rate_pct.toFixed(1)}% de churn et ${mostUnstableContract.predicted_high_risk_customers} clients sensibles.`
+                  ? `${mostUnstableContract.churn_rate_pct.toFixed(1)}% de departs constates et ${mostUnstableContract.predicted_high_risk_customers} clients sensibles.`
                   : "Contrat critique indisponible."}
               </p>
             </div>
@@ -591,14 +591,14 @@ export default function Users() {
               <p className="mt-2 text-2xl font-semibold text-[#16A34A]">{formatMadValue(estimatedRecoveredRevenueMad)}</p>
             </div>
             <div className="rounded-2xl bg-[#F8FAFC] p-4">
-              <p className="text-xs uppercase tracking-[0.18em] text-[#64748B]">Baisse du churn</p>
+              <p className="text-xs uppercase tracking-[0.18em] text-[#64748B]">Baisse du risque de depart</p>
               <p className="mt-2 text-2xl font-semibold text-[#2D6CDF]">{estimatedChurnDecreasePct.toFixed(1)}%</p>
             </div>
           </div>
 
           <div className="mt-5 rounded-2xl border border-emerald-100 bg-white p-4">
             <p className="text-sm font-medium text-[#0F172A]">
-              {simulationReady ? "Scenario simule actif" : "Scenario IA en prevision"}
+              {simulationReady ? "Scenario simule actif" : "Scenario pret a estimer"}
             </p>
             <p className="mt-2 text-sm text-[#64748B]">
               Gain moyen de {formatMadValue(averageRetentionGainMad)} par client visible priorise.
@@ -616,7 +616,7 @@ export default function Users() {
           <p className="text-3xl font-bold text-[#0F172A]">{isLoading ? "--" : overview?.kpis.total_customers ?? 0}</p>
         </div>
         <div className="rounded-xl border border-gray-200 bg-white p-6">
-          <p className="text-sm text-[#64748B]">Churn reel</p>
+          <p className="text-sm text-[#64748B]">Departs constates</p>
           <p className="mt-2 text-3xl font-bold text-[#DC2626]">{isLoading ? "--" : overview?.kpis.actual_churn_customers ?? 0}</p>
         </div>
         <div className="rounded-xl border border-gray-200 bg-white p-6">
@@ -754,7 +754,7 @@ export default function Users() {
           </select>
 
           <select value={selectedScoreBand} onChange={(event) => setSelectedScoreBand(event.target.value as ScoreBand)} className="rounded-lg border border-gray-200 bg-[#F8FAFC] px-4 py-2.5 text-sm focus:border-transparent focus:outline-none focus:ring-2 focus:ring-[#2D6CDF]">
-            <option value="all">Tous scores IA</option>
+            <option value="all">Tous les scores</option>
             <option value="critical">Score &gt;= 80</option>
             <option value="warning">Score 50-79</option>
             <option value="safe">Score &lt; 50</option>
@@ -763,7 +763,7 @@ export default function Users() {
 
         <div className="mt-4 grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
           <select value={selectedChurnStatus} onChange={(event) => setSelectedChurnStatus(event.target.value)} className="rounded-lg border border-gray-200 bg-[#F8FAFC] px-4 py-2.5 text-sm focus:border-transparent focus:outline-none focus:ring-2 focus:ring-[#2D6CDF]">
-            <option value="all">Tous statuts churn</option>
+            <option value="all">Tous les statuts de depart</option>
             {(filters?.churn_statuses ?? []).map((status) => <option key={status} value={status}>{status === "Yes" ? "Oui" : "Non"}</option>)}
           </select>
 
@@ -777,7 +777,7 @@ export default function Users() {
           <select value={sortMode} onChange={(event) => setSortMode(event.target.value as SortMode)} className="rounded-lg border border-gray-200 bg-[#F8FAFC] px-4 py-2.5 text-sm focus:border-transparent focus:outline-none focus:ring-2 focus:ring-[#2D6CDF]">
             <option value="risk">Trier par risque</option>
             <option value="revenue">Trier par revenu mensuel</option>
-            <option value="probability">Trier par probabilite churn</option>
+            <option value="probability">Trier par risque de depart</option>
           </select>
         </div>
       </div>
@@ -793,10 +793,10 @@ export default function Users() {
                   <th className="px-6 py-4 text-left text-sm font-semibold text-[#0F172A]">Contrat</th>
                   <th className="px-6 py-4 text-left text-sm font-semibold text-[#0F172A]">Anciennete</th>
                   <th className="px-6 py-4 text-left text-sm font-semibold text-[#0F172A]">Mensuel</th>
-                  <th className="px-6 py-4 text-left text-sm font-semibold text-[#0F172A]">Score IA churn</th>
+                  <th className="px-6 py-4 text-left text-sm font-semibold text-[#0F172A]">Score de risque</th>
                   <th className="px-6 py-4 text-left text-sm font-semibold text-[#0F172A]">Priorite</th>
                   <th className="px-6 py-4 text-left text-sm font-semibold text-[#0F172A]">Pourquoi a risque ?</th>
-                  <th className="px-6 py-4 text-left text-sm font-semibold text-[#0F172A]">Action IA</th>
+                  <th className="px-6 py-4 text-left text-sm font-semibold text-[#0F172A]">Action conseillee</th>
                   <th className="px-6 py-4 text-left text-sm font-semibold text-[#0F172A]">Actions</th>
                 </tr>
               </thead>
@@ -826,8 +826,8 @@ export default function Users() {
                             <div className="font-medium text-[#0F172A]">{customer.customer_id}</div>
                             <div className="mt-1 text-xs text-[#64748B]">{formatInternetServiceLabel(customer.internet_service)} - {formatPaymentMethodLabel(customer.payment_method)}</div>
                             <div className="mt-2 flex flex-wrap gap-1.5">
-                              <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium ${getChurnClasses(customer.actual_churn)}`}>Churn reel {formatChurnLabel(customer.actual_churn)}</span>
-                              <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium ${getChurnClasses(customer.predicted_churn)}`}>Prediction IA {formatChurnLabel(customer.predicted_churn)}</span>
+                              <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium ${getChurnClasses(customer.actual_churn)}`}>Depart constate {formatChurnLabel(customer.actual_churn)}</span>
+                              <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium ${getChurnClasses(customer.predicted_churn)}`}>Risque estime {formatChurnLabel(customer.predicted_churn)}</span>
                             </div>
                           </button>
                         </td>
@@ -916,7 +916,7 @@ export default function Users() {
               />
 
               <div className="grid grid-cols-2 gap-3">
-                <div className="rounded-2xl border border-gray-200 p-4"><p className="text-xs uppercase tracking-[0.18em] text-[#64748B]">Score IA</p><p className="mt-2 text-lg font-semibold text-[#0F172A]">{formatRiskScore(selectedCustomer.risk_score_100)}</p></div>
+                <div className="rounded-2xl border border-gray-200 p-4"><p className="text-xs uppercase tracking-[0.18em] text-[#64748B]">Score de risque</p><p className="mt-2 text-lg font-semibold text-[#0F172A]">{formatRiskScore(selectedCustomer.risk_score_100)}</p></div>
                 <div className="rounded-2xl border border-gray-200 p-4"><p className="text-xs uppercase tracking-[0.18em] text-[#64748B]">Probabilite</p><p className="mt-2 text-lg font-semibold text-[#0F172A]">{formatRiskProbability(selectedCustomer.risk_proba)}</p></div>
                 <div className="rounded-2xl border border-gray-200 p-4"><p className="text-xs uppercase tracking-[0.18em] text-[#64748B]">Revenu mensuel</p><p className="mt-2 text-lg font-semibold text-[#0F172A]">{formatMadValue(selectedCustomer.monthly_cost_mad)}</p></div>
                 <div className="rounded-2xl border border-gray-200 p-4"><p className="text-xs uppercase tracking-[0.18em] text-[#64748B]">Gain estime</p><p className="mt-2 text-lg font-semibold text-[#16A34A]">{formatMadValue(selectedCustomer.estimatedRecoveredRevenueMad)}</p></div>
@@ -935,7 +935,7 @@ export default function Users() {
               </div>
             </div>
           ) : (
-            <div className="py-10 text-center text-sm text-[#64748B]">Selectionnez un client pour afficher le detail IA.</div>
+            <div className="py-10 text-center text-sm text-[#64748B]">Selectionnez un client pour afficher le detail.</div>
           )}
         </aside>
       </div>
@@ -944,9 +944,9 @@ export default function Users() {
         <p className="text-sm text-[#64748B]">Page {currentPage} / {totalPages} - {visibleCustomers.length} clients affiches sur cette page</p>
 
         <div className="flex flex-wrap gap-3">
-          <button type="button" onClick={() => navigate("/predictions")} className="inline-flex items-center gap-2 rounded-lg border border-gray-200 px-4 py-2 text-sm font-medium text-[#64748B] transition-colors hover:bg-[#F8FAFC]"><TrendingUp className="h-4 w-4" /><span>Predictions IA</span></button>
-          <button type="button" onClick={() => navigate("/recommandations")} className="inline-flex items-center gap-2 rounded-lg border border-gray-200 px-4 py-2 text-sm font-medium text-[#64748B] transition-colors hover:bg-[#F8FAFC]"><Lightbulb className="h-4 w-4" /><span>Recommandations IA</span></button>
-          <button type="button" onClick={() => navigate("/rapports")} className="inline-flex items-center gap-2 rounded-lg border border-gray-200 px-4 py-2 text-sm font-medium text-[#64748B] transition-colors hover:bg-[#F8FAFC]"><Brain className="h-4 w-4" /><span>Rapports churn</span></button>
+          <button type="button" onClick={() => navigate("/predictions")} className="inline-flex items-center gap-2 rounded-lg border border-gray-200 px-4 py-2 text-sm font-medium text-[#64748B] transition-colors hover:bg-[#F8FAFC]"><TrendingUp className="h-4 w-4" /><span>Previsions et alertes</span></button>
+          <button type="button" onClick={() => navigate("/recommandations")} className="inline-flex items-center gap-2 rounded-lg border border-gray-200 px-4 py-2 text-sm font-medium text-[#64748B] transition-colors hover:bg-[#F8FAFC]"><Lightbulb className="h-4 w-4" /><span>Suggestions d'optimisation</span></button>
+          <button type="button" onClick={() => navigate("/rapports")} className="inline-flex items-center gap-2 rounded-lg border border-gray-200 px-4 py-2 text-sm font-medium text-[#64748B] transition-colors hover:bg-[#F8FAFC]"><Brain className="h-4 w-4" /><span>Rapports sur le risque client</span></button>
           <button type="button" disabled={offset === 0 || isLoading} onClick={() => setOffset((previousOffset) => Math.max(previousOffset - PAGE_SIZE, 0))} className="rounded-lg border border-gray-200 px-4 py-2 text-sm font-medium text-[#64748B] transition-colors hover:bg-[#F8FAFC] disabled:cursor-not-allowed disabled:opacity-60">Precedent</button>
           <button type="button" disabled={isLoading || !customers || offset + PAGE_SIZE >= customers.total} onClick={() => setOffset((previousOffset) => previousOffset + PAGE_SIZE)} className="rounded-lg border border-gray-200 px-4 py-2 text-sm font-medium text-[#64748B] transition-colors hover:bg-[#F8FAFC] disabled:cursor-not-allowed disabled:opacity-60">Suivant</button>
         </div>

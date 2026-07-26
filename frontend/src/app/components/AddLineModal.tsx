@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import {
   Building2,
+  Check,
   CheckCircle2,
   CreditCard,
   Info,
@@ -93,78 +94,78 @@ const statusCards: Array<{
   {
     value: "libre",
     label: "Libre",
-    description: "Disponible pour attribution.",
-    helper: "Aucune attribution",
+    description: "Disponible pour une nouvelle attribution.",
+    helper: "Disponible",
     icon: CheckCircle2,
-    baseCardClassName: "border-emerald-200 bg-emerald-50/55",
-    hoverCardClassName: "hover:border-emerald-300 hover:bg-emerald-50/80 hover:shadow-[0_18px_35px_-32px_rgba(16,185,129,0.28)]",
-    baseIconClassName: "border-emerald-100 bg-emerald-100 text-[#059669]",
+    baseCardClassName: "border-emerald-200 bg-[linear-gradient(135deg,rgba(236,253,245,0.95),rgba(255,255,255,0.98))]",
+    hoverCardClassName: "hover:border-emerald-300 hover:shadow-[0_24px_44px_-32px_rgba(16,185,129,0.34)]",
+    baseIconClassName: "border-emerald-200 bg-emerald-100 text-[#059669]",
     baseRadioClassName: "border-emerald-200 bg-white",
     titleClassName: "text-[#065F46]",
     descriptionClassName: "text-[#047857]",
     badgeClassName: "border-emerald-200 bg-white text-[#059669]",
     activeCardClassName:
-      "border-2 border-emerald-400 bg-[linear-gradient(135deg,#ECFDF5,#FFFFFF)] shadow-[0_22px_40px_-30px_rgba(16,185,129,0.48)]",
-    activeIconClassName: "border-emerald-200 bg-emerald-100 text-[#059669]",
-    activeRadioClassName: "border-emerald-400 bg-emerald-50 shadow-[0_0_0_3px_rgba(16,185,129,0.12)]",
+      "border-[2.5px] border-emerald-400 bg-[linear-gradient(135deg,#ECFDF5,#FFFFFF)] shadow-[0_24px_48px_-28px_rgba(16,185,129,0.44)]",
+    activeIconClassName: "border-emerald-300 bg-emerald-100 text-[#047857] shadow-[0_14px_28px_-20px_rgba(16,185,129,0.45)]",
+    activeRadioClassName: "border-emerald-400 bg-emerald-50 shadow-[0_0_0_4px_rgba(16,185,129,0.12)]",
     activeDotClassName: "bg-emerald-500",
   },
   {
     value: "attribuee",
-    label: "Attribuee",
-    description: "Liee a un collaborateur.",
-    helper: "Liee a un collaborateur",
+    label: "Deja utilisee",
+    description: "Associee a un collaborateur.",
+    helper: "En cours d'utilisation",
     icon: User,
-    baseCardClassName: "border-blue-200 bg-blue-50/60",
-    hoverCardClassName: "hover:border-blue-300 hover:bg-blue-50/85 hover:shadow-[0_18px_35px_-32px_rgba(37,99,235,0.3)]",
-    baseIconClassName: "border-blue-100 bg-blue-100 text-[#2563EB]",
+    baseCardClassName: "border-blue-200 bg-[linear-gradient(135deg,rgba(239,246,255,0.96),rgba(255,255,255,0.98))]",
+    hoverCardClassName: "hover:border-blue-300 hover:shadow-[0_24px_44px_-32px_rgba(37,99,235,0.34)]",
+    baseIconClassName: "border-blue-200 bg-blue-100 text-[#2563EB]",
     baseRadioClassName: "border-blue-200 bg-white",
-    titleClassName: "text-[#1E3A8A]",
-    descriptionClassName: "text-[#2563EB]",
+    titleClassName: "text-[#1D4ED8]",
+    descriptionClassName: "text-[#1E40AF]",
     badgeClassName: "border-blue-200 bg-white text-[#2563EB]",
     activeCardClassName:
-      "border-2 border-blue-400 bg-[linear-gradient(135deg,#EFF6FF,#FFFFFF)] shadow-[0_24px_44px_-32px_rgba(37,99,235,0.42)]",
-    activeIconClassName: "border-blue-200 bg-blue-100 text-[#2563EB]",
-    activeRadioClassName: "border-blue-400 bg-blue-50 shadow-[0_0_0_3px_rgba(37,99,235,0.12)]",
+      "border-[2.5px] border-blue-400 bg-[linear-gradient(135deg,#EFF6FF,#FFFFFF)] shadow-[0_24px_48px_-28px_rgba(37,99,235,0.42)]",
+    activeIconClassName: "border-blue-300 bg-blue-100 text-[#1D4ED8] shadow-[0_14px_28px_-20px_rgba(37,99,235,0.4)]",
+    activeRadioClassName: "border-blue-400 bg-blue-50 shadow-[0_0_0_4px_rgba(37,99,235,0.12)]",
     activeDotClassName: "bg-[#2563EB]",
   },
   {
     value: "suspendue",
-    label: "Suspendue",
-    description: "Service temporairement bloque.",
-    helper: "Temporairement bloquee",
+    label: "Temporairement bloquee",
+    description: "Service coupe pour une action temporaire.",
+    helper: "Attention",
     icon: PauseCircle,
-    baseCardClassName: "border-amber-200 bg-amber-50/65",
-    hoverCardClassName: "hover:border-amber-300 hover:bg-amber-50/90 hover:shadow-[0_18px_35px_-32px_rgba(245,158,11,0.3)]",
-    baseIconClassName: "border-amber-100 bg-amber-100 text-[#D97706]",
+    baseCardClassName: "border-amber-200 bg-[linear-gradient(135deg,rgba(255,247,237,0.96),rgba(255,255,255,0.98))]",
+    hoverCardClassName: "hover:border-amber-300 hover:shadow-[0_24px_44px_-32px_rgba(245,158,11,0.34)]",
+    baseIconClassName: "border-amber-200 bg-amber-100 text-[#D97706]",
     baseRadioClassName: "border-amber-200 bg-white",
     titleClassName: "text-[#9A3412]",
     descriptionClassName: "text-[#C2410C]",
     badgeClassName: "border-amber-200 bg-white text-[#D97706]",
     activeCardClassName:
-      "border-2 border-amber-400 bg-[linear-gradient(135deg,#FFF7ED,#FFFFFF)] shadow-[0_22px_40px_-30px_rgba(245,158,11,0.42)]",
-    activeIconClassName: "border-amber-200 bg-amber-100 text-[#D97706]",
-    activeRadioClassName: "border-amber-400 bg-amber-50 shadow-[0_0_0_3px_rgba(245,158,11,0.12)]",
+      "border-[2.5px] border-amber-400 bg-[linear-gradient(135deg,#FFF7ED,#FFFFFF)] shadow-[0_24px_48px_-28px_rgba(245,158,11,0.42)]",
+    activeIconClassName: "border-amber-300 bg-amber-100 text-[#D97706] shadow-[0_14px_28px_-20px_rgba(245,158,11,0.42)]",
+    activeRadioClassName: "border-amber-400 bg-amber-50 shadow-[0_0_0_4px_rgba(245,158,11,0.12)]",
     activeDotClassName: "bg-amber-500",
   },
   {
     value: "inactive",
-    label: "Inactive",
-    description: "Ligne hors service.",
-    helper: "Hors service",
+    label: "Hors service",
+    description: "Ligne desactivee et non utilisable.",
+    helper: "Desactivee",
     icon: PowerOff,
-    baseCardClassName: "border-slate-200 bg-slate-50/80",
-    hoverCardClassName: "hover:border-slate-300 hover:bg-slate-50 hover:shadow-[0_18px_35px_-32px_rgba(100,116,139,0.22)]",
-    baseIconClassName: "border-slate-200 bg-slate-100 text-[#64748B]",
-    baseRadioClassName: "border-slate-300 bg-white",
-    titleClassName: "text-[#334155]",
+    baseCardClassName: "border-slate-300 bg-[linear-gradient(135deg,rgba(241,245,249,0.98),rgba(255,255,255,0.98))]",
+    hoverCardClassName: "hover:border-slate-400 hover:shadow-[0_24px_44px_-32px_rgba(51,65,85,0.26)]",
+    baseIconClassName: "border-slate-300 bg-slate-200 text-[#334155]",
+    baseRadioClassName: "border-slate-400 bg-white",
+    titleClassName: "text-[#1E293B]",
     descriptionClassName: "text-[#475569]",
-    badgeClassName: "border-slate-200 bg-white text-[#64748B]",
+    badgeClassName: "border-slate-300 bg-white text-[#334155]",
     activeCardClassName:
-      "border-2 border-slate-400 bg-[linear-gradient(135deg,#F8FAFC,#FFFFFF)] shadow-[0_20px_38px_-32px_rgba(100,116,139,0.26)]",
-    activeIconClassName: "border-slate-300 bg-slate-200 text-[#475569]",
-    activeRadioClassName: "border-slate-400 bg-slate-100 shadow-[0_0_0_3px_rgba(148,163,184,0.12)]",
-    activeDotClassName: "bg-slate-500",
+      "border-[2.5px] border-slate-500 bg-[linear-gradient(135deg,#F8FAFC,#FFFFFF)] shadow-[0_24px_44px_-30px_rgba(51,65,85,0.28)]",
+    activeIconClassName: "border-slate-400 bg-slate-200 text-[#1E293B] shadow-[0_14px_28px_-20px_rgba(51,65,85,0.24)]",
+    activeRadioClassName: "border-slate-500 bg-slate-100 shadow-[0_0_0_4px_rgba(100,116,139,0.12)]",
+    activeDotClassName: "bg-slate-600",
   },
 ];
 
@@ -287,14 +288,14 @@ export default function AddLineModal({
   const statusSummaryMessage = isStatusManuallyOverridden
     ? "Vous avez remplace la suggestion automatique. Votre choix manuel sera conserve."
     : suggestedStatus === "attribuee"
-      ? "Cette ligne sera automatiquement attribuee a ce collaborateur."
+      ? "Cette ligne sera automatiquement marquee comme deja utilisee pour ce collaborateur."
       : "Aucun collaborateur selectionne, la ligne sera creee comme libre.";
   const statusSummaryDescription =
     isStatusManuallyOverridden && formData.assigned_to.trim() !== "" && formData.status === "libre"
-      ? "Le collaborateur renseigne sera ignore tant que vous conservez un statut libre."
+      ? "Le collaborateur renseigne ne sera pas lie a la ligne tant que vous gardez le statut Libre."
       : isStatusManuallyOverridden && formData.assigned_to.trim() === "" && formData.status === "attribuee"
-        ? "Renseignez un collaborateur pour garder une ligne attribuee coherente."
-        : "Vous pouvez conserver la suggestion ou choisir un autre statut selon le besoin metier.";
+        ? "Renseignez un collaborateur pour garder un statut Deja utilisee coherent."
+        : "Vous pouvez conserver la suggestion ou choisir un autre statut selon votre besoin metier.";
 
   function handleStatusSelection(nextStatus: LineCrudStatus) {
     setFormData((currentData) => ({
@@ -336,7 +337,7 @@ export default function AddLineModal({
               {mode === "create" ? "Ajouter une ligne" : "Modifier la ligne"}
             </DialogTitle>
             <DialogDescription className="max-w-2xl text-sm leading-6 text-[#64748B]">
-              Renseignez les informations de la ligne telecom et le statut metier visible dans
+              Renseignez les informations de la ligne telephonique et le statut metier visible dans
               le tableau principal.
             </DialogDescription>
           </DialogHeader>
@@ -390,7 +391,7 @@ export default function AddLineModal({
                   <span
                     className={cn(
                       "inline-flex items-center gap-2 rounded-full border px-3 py-1 text-xs font-medium",
-                      selectedStatusCard.activeRadioClassName,
+                      selectedStatusCard.badgeClassName,
                     )}
                   >
                     <selectedStatusCard.icon className="h-3.5 w-3.5" />
@@ -448,10 +449,10 @@ export default function AddLineModal({
                     <div
                       key={card.value}
                       className={cn(
-                        "relative overflow-hidden rounded-[24px] border transition-all duration-200",
+                        "relative overflow-hidden rounded-[24px] transition-all duration-300",
                         isActive
-                          ? `${card.activeCardClassName} -translate-y-0.5 ring-1 ring-white/70`
-                          : `${card.baseCardClassName} ${card.hoverCardClassName}`,
+                          ? `${card.activeCardClassName} scale-[1.01] ring-1 ring-white/80`
+                          : `${card.baseCardClassName} ${card.hoverCardClassName} hover:scale-[1.02]`,
                       )}
                     >
                       <button
@@ -459,13 +460,14 @@ export default function AddLineModal({
                         role="radio"
                         aria-checked={isActive}
                         onClick={() => handleStatusSelection(card.value)}
-                        className="w-full cursor-pointer p-4 text-left focus:outline-none"
+                        aria-label={`${card.label} - ${card.description}`}
+                        className="w-full cursor-pointer p-5 text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-[#0F172A]/10"
                       >
-                        <div className="flex items-start justify-between gap-3">
-                          <div className="flex min-w-0 items-start gap-3">
+                        <div className="flex min-h-[164px] items-start justify-between gap-4">
+                          <div className="flex min-w-0 items-start gap-4">
                             <span
                               className={cn(
-                                "flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl border transition-colors",
+                                "flex h-14 w-14 shrink-0 items-center justify-center rounded-[20px] border transition-all duration-300",
                                 isActive
                                   ? card.activeIconClassName
                                   : card.baseIconClassName,
@@ -475,53 +477,39 @@ export default function AddLineModal({
                             </span>
 
                             <div className="min-w-0">
-                              <div className="flex flex-wrap items-center gap-2">
-                                <span className={cn("text-[15px] font-semibold", isActive ? "text-[#0F172A]" : card.titleClassName)}>
+                              <div className="flex flex-wrap items-center gap-2.5">
+                                <span className={cn("text-base font-bold tracking-[-0.01em]", isActive ? "text-[#0F172A]" : card.titleClassName)}>
                                   {card.label}
                                 </span>
+                                <span className={cn("rounded-full border bg-white/92 px-2.5 py-1 text-[11px] font-semibold", card.badgeClassName)}>
+                                  {card.helper}
+                                </span>
                                 {isSuggested ? (
-                                  <span className={cn("rounded-full border bg-white/90 px-2 py-0.5 text-[11px] font-semibold", card.badgeClassName)}>
-                                    Suggere
+                                  <span className="rounded-full border border-[#DCE5F1] bg-white/92 px-2.5 py-1 text-[11px] font-semibold text-[#0F172A] shadow-sm">
+                                    Recommande
                                   </span>
                                 ) : null}
                               </div>
-                              <p className={cn("mt-2 text-sm leading-6", isActive ? "text-[#475569]" : card.descriptionClassName)}>
+                              <p className={cn("mt-3 max-w-[28ch] text-sm font-medium leading-6", isActive ? "text-[#334155]" : card.descriptionClassName)}>
                                 {card.description}
                               </p>
                             </div>
                           </div>
 
-                          <div className="flex shrink-0 items-start gap-2">
-                            <Tooltip>
-                              <TooltipTrigger asChild>
-                                <span className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-white/70 bg-white/80 text-[#64748B]">
-                                  <Info className="h-3.5 w-3.5" />
-                                </span>
-                              </TooltipTrigger>
-                              <TooltipContent
-                                sideOffset={8}
-                                className="max-w-[220px] bg-[#0F172A] text-white"
-                              >
-                                {card.helper}
-                              </TooltipContent>
-                            </Tooltip>
-
+                          <div className="flex shrink-0 items-start">
                             <span
                               className={cn(
-                                "flex h-6 w-6 items-center justify-center rounded-full border transition-all",
+                                "flex h-8 w-8 items-center justify-center rounded-full border transition-all duration-300",
                                 isActive
                                   ? card.activeRadioClassName
                                   : card.baseRadioClassName,
                               )}
                             >
-                              <span
-                                className={cn(
-                                  "h-2.5 w-2.5 rounded-full transition-transform duration-200",
-                                  isActive
-                                    ? `${card.activeDotClassName} scale-100`
-                                    : "scale-0 bg-transparent",
-                                )}
-                              />
+                              {isActive ? (
+                                <Check className={cn("h-4 w-4", isActive ? "text-[#0F172A]" : card.titleClassName)} />
+                              ) : (
+                                <span className="h-3 w-3 rounded-full bg-white/80" />
+                              )}
                             </span>
                           </div>
                         </div>
@@ -664,7 +652,7 @@ export default function AddLineModal({
                 </div>
                 <p className="text-xs text-[#64748B]">
                   Si un collaborateur est renseigne, le statut suggere passe automatiquement a
-                  Attribuee. Vous pouvez toujours le modifier manuellement.
+                  Deja utilisee. Vous pouvez toujours le modifier manuellement.
                 </p>
               </div>
             </div>
@@ -685,7 +673,7 @@ export default function AddLineModal({
                   <span
                     className={cn(
                       "inline-flex items-center gap-2 rounded-full border px-3 py-1 text-xs font-medium",
-                      selectedStatusCard.activeRadioClassName,
+                      selectedStatusCard.badgeClassName,
                     )}
                   >
                     <selectedStatusCard.icon className="h-3.5 w-3.5" />

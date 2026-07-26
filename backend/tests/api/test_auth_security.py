@@ -1,8 +1,13 @@
 from urllib.parse import unquote_plus
 
 from fastapi.testclient import TestClient
+from sqlalchemy import select
 
 from app.core.config import get_settings
+from app.core.security import decode_token, hash_password, verify_password
+from app.models.company import Company
+from app.models.user import User
+from app.services.auth_service import ensure_default_admin
 
 
 def test_login_success_returns_access_and_refresh_tokens(client: TestClient) -> None:
@@ -72,6 +77,98 @@ def test_register_rejects_admin_role_assignment(client: TestClient) -> None:
     assert (
         response.json()["detail"]
         == "Administrator role can only be assigned by an existing administrator"
+    )
+
+
+def test_register_request_company_match_detects_company_from_email_domain(
+    client: TestClient,
+    db_session,
+) -> None:
+    company = Company(
+        name="Atlas Telecom Fleet",
+        sector="Telecom",
+        city="Casablanca",
+        phone="+212522000000",
+        website="https://atlas.ma",
+        operators_json='["Orange"]',
+        coverage_zones_json='["Casablanca"]',
+    )
+    db_session.add(company)
+    db_session.commit()
+
+    response = client.post(
+        "/api/v1/auth/register-request/company-match",
+        json={"email": "nora@atlas.ma"},
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["matched"] is True
+    assert body["company_name"] == "Atlas Telecom Fleet"
+    assert body["source"] == "email_domain"
+    assert body["invitation_code_required"] is False
+
+
+def test_register_request_creates_pending_user_and_blocks_login(
+    client: TestClient,
+    db_session,
+) -> None:
+    company = Company(
+        name="Atlas Telecom Fleet",
+        sector="Telecom",
+        city="Casablanca",
+        phone="+212522000000",
+        website="https://atlas.ma",
+        operators_json='["Orange"]',
+        coverage_zones_json='["Casablanca"]',
+    )
+    db_session.add(company)
+    db_session.commit()
+    db_session.refresh(company)
+
+    response = client.post(
+        "/api/v1/auth/register-request",
+        json={
+            "full_name": "Nora Amrani",
+            "email": "nora@atlas.ma",
+            "phone": "+212600000123",
+            "requested_department": "Finance",
+            "job_profile": "Analyste Telecom",
+            "password": "SecurePass123",
+        },
+    )
+
+    assert response.status_code == 201
+    body = response.json()
+    assert body["company_name"] == "Atlas Telecom Fleet"
+    assert body["account_status"] == "pending"
+
+    created_user = db_session.scalar(select(User).where(User.email == "nora@atlas.ma"))
+    assert created_user is not None
+    assert created_user.company_id == company.id
+    assert created_user.account_status == "pending"
+    assert created_user.is_active is False
+    assert created_user.phone == "+212600000123"
+    assert created_user.requested_department == "Finance"
+    assert created_user.job_profile == "Analyste Telecom"
+
+    db_session.expire_all()
+    refreshed_company = db_session.scalar(select(Company).where(Company.id == company.id))
+    assert refreshed_company is not None
+    assert refreshed_company.join_code is not None
+
+    login_response = client.post(
+        "/api/v1/auth/login",
+        json={
+            "email": "nora@atlas.ma",
+            "password": "SecurePass123",
+        },
+    )
+
+    assert login_response.status_code == 403
+    assert (
+        login_response.json()["detail"]
+        == "Compte en attente de validation par l'administrateur de votre entreprise."
     )
 
 
@@ -305,6 +402,113 @@ def test_login_failure_with_wrong_password_returns_401(client: TestClient) -> No
 
     assert response.status_code == 401
     assert response.json()["detail"] == "Invalid credentials"
+
+
+def test_super_admin_login_succeeds_with_dedicated_default_account(
+    client: TestClient,
+) -> None:
+    response = client.post(
+        "/api/v1/auth/admin/login",
+        json={
+            "email": "elazzamilham2@gmail.com",
+            "password": "Ilham12345678",
+        },
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["access_token"]
+    assert body["refresh_token"]
+    assert body["user"]["email"] == "elazzamilham2@gmail.com"
+    assert body["user"]["role"] == "super_admin"
+    payload = decode_token(body["access_token"])
+    assert payload["sub"] == str(body["user"]["id"])
+    assert payload["user_id"] == body["user"]["id"]
+    assert payload["email"] == "elazzamilham2@gmail.com"
+    assert payload["role"] == "super_admin"
+
+
+def test_admin_login_returns_explicit_message_when_user_does_not_exist(
+    client: TestClient,
+) -> None:
+    response = client.post(
+        "/api/v1/auth/admin/login",
+        json={
+            "email": "missing.superadmin@test.com",
+            "password": "Ilham12345678",
+        },
+    )
+
+    assert response.status_code == 401
+    assert response.json()["detail"] == {
+        "code": "USER_NOT_FOUND",
+        "message": "Utilisateur inexistant",
+    }
+
+
+def test_admin_login_returns_explicit_message_when_password_is_invalid(
+    client: TestClient,
+) -> None:
+    response = client.post(
+        "/api/v1/auth/admin/login",
+        json={
+            "email": "elazzamilham2@gmail.com",
+            "password": "WrongPassword1!",
+        },
+    )
+
+    assert response.status_code == 401
+    assert response.json()["detail"] == {
+        "code": "INVALID_PASSWORD",
+        "message": "Mot de passe incorrect",
+    }
+
+
+def test_admin_login_rejects_non_super_admin_role(
+    client: TestClient,
+    manager_user,
+) -> None:
+    response = client.post(
+        "/api/v1/auth/admin/login",
+        json={
+            "email": manager_user.email,
+            "password": "Manager123!",
+        },
+    )
+
+    assert response.status_code == 403
+    assert response.json()["detail"] == {
+        "code": "SUPER_ADMIN_ONLY",
+        "message": "Acces reserve au Super Administrateur",
+    }
+
+
+def test_ensure_default_admin_repairs_super_admin_credentials_and_role(db_session) -> None:
+    super_admin = db_session.scalar(
+        select(User).where(User.email == "elazzamilham2@gmail.com")
+    )
+    assert super_admin is not None
+
+    super_admin.full_name = "Ancien Compte"
+    super_admin.role = "admin"
+    super_admin.is_active = False
+    super_admin.account_status = "suspended"
+    super_admin.hashed_password = hash_password("WrongPassword1!")
+    db_session.add(super_admin)
+    db_session.commit()
+
+    ensure_default_admin()
+
+    db_session.expire_all()
+    repaired_super_admin = db_session.scalar(
+        select(User).where(User.email == "elazzamilham2@gmail.com")
+    )
+    assert repaired_super_admin is not None
+    assert repaired_super_admin.full_name == "Super Administrateur"
+    assert repaired_super_admin.role == "super_admin"
+    assert repaired_super_admin.is_active is True
+    assert repaired_super_admin.account_status == "active"
+    assert verify_password("Ilham12345678", repaired_super_admin.hashed_password)
 
 
 def test_protected_endpoint_without_token_returns_401(client: TestClient) -> None:

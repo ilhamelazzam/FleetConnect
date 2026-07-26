@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
+import logging
 from typing import Any
 
 from fastapi import HTTPException, status
@@ -24,6 +25,7 @@ from app.services.mobile_fleet_service import list_mobile_fleet_recommendations
 
 ALERT_TYPES = {"alert", "warning"}
 SYSTEM_TYPES = {"info", "success"}
+NOTIFICATION_LOGGER = logging.getLogger("app.notifications")
 
 
 def _clean_text(value: str | None) -> str | None:
@@ -89,6 +91,24 @@ def _build_notification_read(notification: Notification) -> NotificationRead:
         source_id=notification.source_id,
         metadata_json=notification.metadata_json or {},
     )
+
+
+def _run_sync_step(
+    *,
+    label: str,
+    current_user: User,
+    sync_callable,
+) -> None:
+    try:
+        sync_callable()
+    except HTTPException:
+        raise
+    except Exception:
+        NOTIFICATION_LOGGER.exception(
+            "event=notification_sync_failed source=%s user_id=%s",
+            label,
+            current_user.id,
+        )
 
 
 def _find_existing_by_source(
@@ -198,11 +218,7 @@ def create_notification(
 
 
 def _sync_mobile_budget_notifications(db: Session, current_user: User) -> None:
-    try:
-        recommendations = list_mobile_fleet_recommendations(limit=3)["items"]
-    except Exception:
-        return
-
+    recommendations = list_mobile_fleet_recommendations(limit=3)["items"]
     for item in recommendations:
         enqueue_notification(
             db,
@@ -225,11 +241,7 @@ def _sync_mobile_budget_notifications(db: Session, current_user: User) -> None:
 
 
 def _sync_cdr_fraud_notifications(db: Session, current_user: User) -> None:
-    try:
-        recommendations = list_cdr_recommendations(limit=3)["items"]
-    except Exception:
-        return
-
+    recommendations = list_cdr_recommendations(limit=3)["items"]
     for item in recommendations:
         enqueue_notification(
             db,
@@ -252,11 +264,7 @@ def _sync_cdr_fraud_notifications(db: Session, current_user: User) -> None:
 
 
 def _sync_churn_ai_notifications(db: Session, current_user: User) -> None:
-    try:
-        recommendations = list_customer_churn_recommendations(limit=3)["items"]
-    except Exception:
-        return
-
+    recommendations = list_customer_churn_recommendations(limit=3)["items"]
     for item in recommendations:
         enqueue_notification(
             db,
@@ -327,10 +335,26 @@ def _sync_compliance_notifications(db: Session, current_user: User) -> None:
 
 
 def sync_smart_notifications(db: Session, current_user: User) -> None:
-    _sync_mobile_budget_notifications(db, current_user)
-    _sync_cdr_fraud_notifications(db, current_user)
-    _sync_churn_ai_notifications(db, current_user)
-    _sync_compliance_notifications(db, current_user)
+    _run_sync_step(
+        label="mobile_fleet",
+        current_user=current_user,
+        sync_callable=lambda: _sync_mobile_budget_notifications(db, current_user),
+    )
+    _run_sync_step(
+        label="cdr_analytics",
+        current_user=current_user,
+        sync_callable=lambda: _sync_cdr_fraud_notifications(db, current_user),
+    )
+    _run_sync_step(
+        label="customer_churn",
+        current_user=current_user,
+        sync_callable=lambda: _sync_churn_ai_notifications(db, current_user),
+    )
+    _run_sync_step(
+        label="fleet_access_compliance",
+        current_user=current_user,
+        sync_callable=lambda: _sync_compliance_notifications(db, current_user),
+    )
     db.commit()
 
 

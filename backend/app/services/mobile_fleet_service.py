@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import csv
+import logging
 import threading
 import unicodedata
 from collections import Counter, defaultdict
@@ -8,17 +9,12 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from app.core.config import get_settings
+from app.core.config import AI_OUTPUT_DIR, ResolvedDataSource, get_settings
 
 UNKNOWN_VALUE = "Inconnu"
 RISK_LEVEL_ORDER = ("Critique", "Eleve", "Moyen", "Faible")
-DEFAULT_MOBILE_FLEET_CSV_PATH = (
-    Path(__file__).resolve().parents[3]
-    / "ai"
-    / "data"
-    / "output"
-    / "mobile_fleet_project_ready.csv"
-)
+DEFAULT_MOBILE_FLEET_CSV_PATH = AI_OUTPUT_DIR / "fleetconnect_ai_output.csv"
+MOBILE_FLEET_LOGGER = logging.getLogger("app.mobile_fleet")
 
 
 @dataclass(slots=True)
@@ -39,17 +35,20 @@ def clear_mobile_fleet_cache() -> None:
         _cache.rows = None
 
 
+def _resolve_csv_source() -> ResolvedDataSource:
+    return get_settings().resolve_mobile_fleet_source()
+
+
 def _resolve_csv_path() -> Path:
-    settings = get_settings()
-    configured_path = settings.mobile_fleet_csv_path
+    source = _resolve_csv_source()
+    return source.path or source.configured_path or DEFAULT_MOBILE_FLEET_CSV_PATH
 
-    if configured_path:
-        candidate = Path(configured_path)
-        if not candidate.is_absolute():
-            candidate = Path(__file__).resolve().parents[3] / candidate
-        return candidate
 
-    return DEFAULT_MOBILE_FLEET_CSV_PATH
+def _detect_csv_delimiter(sample: str) -> str:
+    try:
+        return csv.Sniffer().sniff(sample, delimiters=";,").delimiter
+    except csv.Error:
+        return ";" if sample.count(";") >= sample.count(",") else ","
 
 
 def _parse_float(raw_value: Any, default: float = 0.0) -> float:
@@ -168,7 +167,9 @@ def _build_mobile_risk_insight(row: dict[str, Any]) -> dict[str, Any]:
 
 def _parse_mobile_fleet_csv(csv_path: Path) -> list[dict[str, Any]]:
     with csv_path.open("r", encoding="utf-8-sig", newline="") as csv_file:
-        reader = csv.DictReader(csv_file)
+        sample = csv_file.read(4096)
+        csv_file.seek(0)
+        reader = csv.DictReader(csv_file, delimiter=_detect_csv_delimiter(sample))
         return [
             _normalize_mobile_fleet_row(row_index, row)
             for row_index, row in enumerate(reader, start=1)
@@ -176,9 +177,17 @@ def _parse_mobile_fleet_csv(csv_path: Path) -> list[dict[str, Any]]:
 
 
 def _load_mobile_fleet_rows() -> list[dict[str, Any]]:
-    csv_path = _resolve_csv_path()
-    if not csv_path.exists():
-        raise FileNotFoundError(f"Mobile fleet CSV not found at {csv_path}")
+    source = _resolve_csv_source()
+    csv_path = source.path
+    if csv_path is None:
+        MOBILE_FLEET_LOGGER.info(
+            "event=csv_source_missing source=%s preferred=%s searched=%s configured_path=%s",
+            source.key,
+            source.preferred_name,
+            [str(path) for path in source.searched_paths],
+            str(source.configured_path) if source.configured_path else None,
+        )
+        return []
 
     current_mtime = csv_path.stat().st_mtime
 
@@ -190,7 +199,25 @@ def _load_mobile_fleet_rows() -> list[dict[str, Any]]:
         ):
             return _cache.rows
 
-    rows = _parse_mobile_fleet_csv(csv_path)
+    try:
+        rows = _parse_mobile_fleet_csv(csv_path)
+    except Exception as exc:
+        MOBILE_FLEET_LOGGER.warning(
+            "event=csv_source_read_failed source=%s path=%s searched=%s error=%s",
+            source.key,
+            str(csv_path),
+            [str(path) for path in source.searched_paths],
+            str(exc),
+        )
+        return []
+
+    MOBILE_FLEET_LOGGER.info(
+        "event=csv_source_loaded source=%s path=%s rows=%s searched=%s",
+        source.key,
+        str(csv_path),
+        len(rows),
+        [str(path) for path in source.searched_paths],
+    )
 
     with _cache_lock:
         _cache.path = csv_path

@@ -73,7 +73,7 @@ function createEmptyOptions(): ImportOptionsState {
 function normalizeError(error: unknown, fallbackMessage: string): string {
   if (error instanceof ApiError) return error.message;
   if (error instanceof Error && error.message === "Failed to fetch") {
-    return "Connexion backend impossible. Verifiez que l'API tourne et que le referentiel collaborateurs est accessible.";
+    return "Connexion au service impossible. Verifiez que le repertoire des collaborateurs est accessible.";
   }
   if (error instanceof Error) return error.message;
   return fallbackMessage;

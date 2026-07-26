@@ -309,7 +309,7 @@ export function ChangePlanDialog({
                         ) : null}
                         {isRecommended ? (
                           <Badge className="border-emerald-200 bg-emerald-50 text-[#059669]">
-                            Recommande IA
+                            Recommande
                           </Badge>
                         ) : null}
                         <Badge className={getPlanActivationStatusClasses(plan.activation_status)}>
@@ -387,7 +387,7 @@ export function ChangePlanDialog({
               <div className="rounded-2xl border border-[#DBEAFE] bg-[#EFF6FF] px-4 py-3 text-sm text-[#1D4ED8]">
                 {selectedPlan ? (
                   <>
-                    <p className="font-medium text-[#1E3A8A]">Recommandation IA</p>
+                    <p className="font-medium text-[#1E3A8A]">Suggestion</p>
                     <p className="mt-1">
                       {selectedPlan.id === recommendedPlanId
                         ? "Ce forfait a ete preselectionne car il correspond mieux au profil de consommation."

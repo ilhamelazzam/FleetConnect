@@ -252,9 +252,11 @@ export default function Admin() {
   }, []);
 
   const normalizedRole = user?.role.trim().toLowerCase() ?? "";
-  const isAdminSession = normalizedRole === "admin";
+  const isAdminSession = normalizedRole === "admin" || normalizedRole === "super_admin";
   const rolePermissions: Record<string, string[]> = {
+    super_admin: ["Validation entreprises", "Supervision multi-entreprises", "Configuration systeme", "Gestion des roles eleves"],
     admin: ["Gestion totale", "Analytique avancee", "Configuration systeme", "Gestion utilisateurs"],
+    company_admin: ["Administration entreprise", "Gestion operationnelle", "Suivi des lignes", "Lecture des rapports"],
     manager: ["Lecture et ecriture", "Suivi des lignes", "Consultation des rapports", "Validation des alertes"],
     analyst: ["Lecture seule", "Analyse des consommations", "Exports basiques", "Consultation des rapports"],
   };

@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { ChevronDown, ChevronUp, Eye, EyeOff, RotateCcw, SlidersHorizontal } from "lucide-react";
+import { toast } from "sonner";
 
 import type {
   DashboardWidgetDefinition,
@@ -9,6 +10,7 @@ import type {
 interface WidgetVisibilityManagerProps {
   title?: string;
   description?: string;
+  resetLabel?: string;
   widgets: DashboardWidgetDefinition[];
   visibility: DashboardWidgetVisibility;
   visibleCount: number;
@@ -19,6 +21,7 @@ interface WidgetVisibilityManagerProps {
 export default function WidgetVisibilityManager({
   title = "Personnaliser le dashboard",
   description = "Choisissez les indicateurs, graphiques et blocs d'analyse a afficher.",
+  resetLabel = "Vue complete",
   widgets,
   visibility,
   visibleCount,
@@ -26,6 +29,13 @@ export default function WidgetVisibilityManager({
   onReset,
 }: WidgetVisibilityManagerProps) {
   const [isOpen, setIsOpen] = useState(false);
+
+  function handleReset(): void {
+    onReset();
+    toast.success("Vue par defaut restauree", {
+      description: "Tous les widgets disponibles sont de nouveau affiches.",
+    });
+  }
 
   return (
     <section className="rounded-2xl border border-[var(--bc-neutral-border)] bg-[var(--card)] p-4 shadow-sm">
@@ -46,11 +56,11 @@ export default function WidgetVisibilityManager({
         <div className="flex flex-wrap gap-2">
           <button
             type="button"
-            onClick={onReset}
+            onClick={handleReset}
             className="inline-flex items-center gap-2 rounded-xl border border-[var(--bc-neutral-border)] px-3 py-2 text-sm font-medium text-[var(--bc-neutral-body)] transition-colors hover:bg-[var(--bc-neutral-soft)]"
           >
             <RotateCcw className="h-4 w-4" />
-            <span>Vue par defaut</span>
+            <span>{resetLabel}</span>
           </button>
           <button
             type="button"

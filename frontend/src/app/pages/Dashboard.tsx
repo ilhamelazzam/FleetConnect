@@ -39,6 +39,7 @@ import {
 import KPICard from "../components/KPICard";
 import AIRiskInsightCard from "../components/AIRiskInsightCard";
 import DashboardSection from "../components/dashboard/DashboardSection";
+import FleetHealthScoreCard from "../components/dashboard/FleetHealthScoreCard";
 import WidgetVisibilityManager from "../components/dashboard/WidgetVisibilityManager";
 import { Button } from "../components/ui/button";
 import { Badge } from "../components/ui/badge";
@@ -53,11 +54,16 @@ import {
   ApiError,
   cdrAnalyticsApi,
   customerChurnApi,
+  liveMonitoringApi,
   mobileFleetApi,
   type ApiCdrOverview,
   type ApiCdrRecommendationList,
+  type ApiCustomerChurnConsumption,
   type ApiCustomerChurnOverview,
+  type ApiFleetHealthScoreResponse,
+  type ApiLiveMonitoringSnapshot,
   type ApiMobileFleetFilters,
+  type ApiMobileFleetAdvancedKpis,
   type ApiMobileFleetOverview,
 } from "../lib/api";
 import {
@@ -141,6 +147,14 @@ function formatIntegerTick(value: number): string {
   }).format(value);
 }
 
+function formatFleetHealthLabel(value: ApiFleetHealthScoreResponse["fleet_health_level"]): string {
+  if (value === "excellent") return "Excellent";
+  if (value === "bon") return "Bon";
+  if (value === "moyen") return "Moyen";
+  if (value === "eleve") return "Eleve";
+  return "Critique";
+}
+
 function getRiskStyles(riskLevel: DashboardRiskLevel): {
   badge: string;
   panel: string;
@@ -196,8 +210,8 @@ function getModuleStyles(moduleName: string): { badge: string; icon: string } {
 const integratedDatasetCards = [
   {
     id: "mobile",
-    title: "Referentiel analytique flotte mobile",
-    description: "Donnees preparees pour l'analyse des forfaits mobiles",
+    title: "Indicateurs de vos lignes mobiles",
+    description: "Vue d'ensemble des usages, forfaits et couts mobiles",
     icon: Smartphone,
     panelClassName:
       "border-[#DBEAFE] bg-[radial-gradient(circle_at_top_right,_rgba(59,130,246,0.12),_transparent_32%),linear-gradient(180deg,_rgba(255,255,255,0.96),_rgba(248,250,252,0.94))]",
@@ -206,8 +220,8 @@ const integratedDatasetCards = [
   },
   {
     id: "churn",
-    title: "Referentiel analytique retention client",
-    description: "Donnees enrichies pour la prediction du churn client",
+    title: "Clients a suivre",
+    description: "Clients avec risque de depart et revenu a proteger",
     icon: Users,
     panelClassName:
       "border-[#D1FAE5] bg-[radial-gradient(circle_at_top_right,_rgba(16,185,129,0.12),_transparent_32%),linear-gradient(180deg,_rgba(255,255,255,0.96),_rgba(248,250,252,0.94))]",
@@ -216,8 +230,8 @@ const integratedDatasetCards = [
   },
   {
     id: "fraud",
-    title: "Referentiel analytique fraude telecom",
-    description: "Donnees consolidees pour la detection de fraude telecom",
+    title: "Appels suspects a surveiller",
+    description: "Points d'attention sur les appels inhabituels ou couteux",
     icon: ShieldAlert,
     panelClassName:
       "border-[#E9D5FF] bg-[radial-gradient(circle_at_top_right,_rgba(124,58,237,0.12),_transparent_32%),linear-gradient(180deg,_rgba(255,255,255,0.96),_rgba(248,250,252,0.94))]",
@@ -229,26 +243,26 @@ const integratedDatasetCards = [
 const dashboardWidgets: DashboardWidgetDefinition[] = [
   {
     id: "source-cards",
-    label: "Referentiels analytiques",
-    description: "Cartes de cadrage des referentiels analytiques mobilite, retention et fraude.",
+    label: "Indicateurs cles",
+    description: "Vue rapide sur vos lignes, vos clients a suivre et les appels suspects.",
     defaultVisible: false,
   },
   {
     id: "executive-summary",
-    label: "Synthese executive",
-    description: "KPI prioritaires et top 5 des arbitrages a traiter.",
+    label: "Vue d'ensemble",
+    description: "Les priorites a traiter en premier pour bien piloter la flotte.",
     defaultVisible: true,
   },
   {
     id: "cross-insights",
-    label: "Insights croises",
-    description: "Analyse combinee budget, churn et fraude par departement.",
+    label: "Analyse des couts et usages",
+    description: "Analyse des couts, des risques et des usages pour optimiser votre flotte.",
     defaultVisible: false,
   },
   {
     id: "analysis-modules",
-    label: "Modules d'analyse",
-    description: "Onglets detailles: flotte mobile, risque client et fraude CDR.",
+    label: "Analyse de votre flotte",
+    description: "Vues detaillees sur les lignes, les clients a suivre et les appels suspects.",
     defaultVisible: true,
   },
 ];
@@ -260,16 +274,25 @@ export default function Dashboard() {
   const [portfolioOverview, setPortfolioOverview] = useState<ApiMobileFleetOverview | null>(null);
   const [filters, setFilters] = useState<ApiMobileFleetFilters | null>(null);
   const [customerOverview, setCustomerOverview] = useState<ApiCustomerChurnOverview | null>(null);
+  const [customerConsumption, setCustomerConsumption] =
+    useState<ApiCustomerChurnConsumption | null>(null);
   const [cdrOverview, setCdrOverview] = useState<ApiCdrOverview | null>(null);
   const [cdrRecommendations, setCdrRecommendations] = useState<ApiCdrRecommendationList | null>(null);
+  const [advancedKpis, setAdvancedKpis] = useState<ApiMobileFleetAdvancedKpis | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isPortfolioLoading, setIsPortfolioLoading] = useState(true);
   const [isCustomerLoading, setIsCustomerLoading] = useState(true);
   const [isCdrLoading, setIsCdrLoading] = useState(true);
+  const [isAdvancedKpisLoading, setIsAdvancedKpisLoading] = useState(true);
+  const [isFleetHealthLoading, setIsFleetHealthLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [portfolioErrorMessage, setPortfolioErrorMessage] = useState<string | null>(null);
   const [customerErrorMessage, setCustomerErrorMessage] = useState<string | null>(null);
   const [cdrErrorMessage, setCdrErrorMessage] = useState<string | null>(null);
+  const [advancedKpiErrorMessage, setAdvancedKpiErrorMessage] = useState<string | null>(null);
+  const [fleetHealthErrorMessage, setFleetHealthErrorMessage] = useState<string | null>(null);
+  const [fleetHealthScore, setFleetHealthScore] = useState<ApiFleetHealthScoreResponse | null>(null);
+  const [fleetHealthLiveSnapshot, setFleetHealthLiveSnapshot] = useState<ApiLiveMonitoringSnapshot | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedOperator, setSelectedOperator] = useState("all");
   const [selectedDepartment, setSelectedDepartment] = useState("all");
@@ -306,6 +329,104 @@ export default function Dashboard() {
 
     return () => {
       isMounted = false;
+    };
+  }, [token]);
+
+  useEffect(() => {
+    let isMounted = true;
+
+    async function loadAdvancedKpis() {
+      if (!token) {
+        if (isMounted) {
+          setAdvancedKpis(null);
+          setIsAdvancedKpisLoading(false);
+        }
+        return;
+      }
+
+      setIsAdvancedKpisLoading(true);
+      setAdvancedKpiErrorMessage(null);
+
+      try {
+        const response = await mobileFleetApi.advancedKpis(token);
+        if (isMounted) {
+          setAdvancedKpis(response);
+        }
+      } catch (error) {
+        if (isMounted) {
+          setAdvancedKpis(null);
+          setAdvancedKpiErrorMessage(
+            normalizeError(error, "Impossible de charger les KPI consolides."),
+          );
+        }
+      } finally {
+        if (isMounted) {
+          setIsAdvancedKpisLoading(false);
+        }
+      }
+    }
+
+    void loadAdvancedKpis();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [token]);
+
+  useEffect(() => {
+    let isMounted = true;
+    let refreshTimer: number | null = null;
+
+    async function loadFleetHealthScore() {
+      if (!token) {
+        if (isMounted) {
+          setFleetHealthScore(null);
+          setFleetHealthLiveSnapshot(null);
+          setIsFleetHealthLoading(false);
+        }
+        return;
+      }
+
+      setFleetHealthErrorMessage(null);
+      setIsFleetHealthLoading(true);
+
+      const [healthResult, liveResult] = await Promise.allSettled([
+        mobileFleetApi.healthScore(token),
+        liveMonitoringApi.kpis(token),
+      ]);
+
+      if (!isMounted) {
+        return;
+      }
+
+      if (healthResult.status === "fulfilled") {
+        setFleetHealthScore(healthResult.value);
+      } else {
+        setFleetHealthScore(null);
+        setFleetHealthErrorMessage(
+          normalizeError(healthResult.reason, "Impossible de charger le Fleet Health Score."),
+        );
+      }
+
+      if (liveResult.status === "fulfilled") {
+        setFleetHealthLiveSnapshot(liveResult.value);
+      } else {
+        setFleetHealthLiveSnapshot(null);
+      }
+
+      setIsFleetHealthLoading(false);
+    }
+
+    void loadFleetHealthScore();
+    refreshTimer = window.setInterval(() => {
+      void loadFleetHealthScore();
+    }, 25_000);
+
+    return () => {
+      isMounted = false;
+      if (refreshTimer !== null) {
+        window.clearInterval(refreshTimer);
+      }
     };
   }, [token]);
 
@@ -412,6 +533,7 @@ export default function Dashboard() {
       if (!token) {
         if (isMounted) {
           setCustomerOverview(null);
+          setCustomerConsumption(null);
           setIsCustomerLoading(false);
         }
         return;
@@ -421,14 +543,21 @@ export default function Dashboard() {
       setCustomerErrorMessage(null);
 
       try {
-        const response = await customerChurnApi.overview(token);
+        const [overviewResponse, consumptionResponse] = await Promise.all([
+          customerChurnApi.overview(token),
+          customerChurnApi.consumption(token),
+        ]);
         if (isMounted) {
-          setCustomerOverview(response);
+          setCustomerOverview(overviewResponse);
+          setCustomerConsumption(consumptionResponse);
         }
       } catch (error) {
         if (isMounted) {
           setCustomerOverview(null);
-          setCustomerErrorMessage(normalizeError(error, "Impossible de charger le bloc churn."));
+          setCustomerConsumption(null);
+          setCustomerErrorMessage(
+            normalizeError(error, "Impossible de charger les blocs churn et consommation."),
+          );
         }
       } finally {
         if (isMounted) {
@@ -506,8 +635,10 @@ export default function Dashboard() {
     portfolioErrorMessage,
     customerErrorMessage,
     cdrErrorMessage,
+    advancedKpiErrorMessage,
   ].filter((message): message is string => Boolean(message));
-  const isDecisionLoading = isPortfolioLoading || isCustomerLoading || isCdrLoading;
+  const isDecisionLoading =
+    isPortfolioLoading || isCustomerLoading || isCdrLoading || isAdvancedKpisLoading;
   const priorityFraudAlerts = mergeFraudPriorityAlerts(cdrOverview, cdrRecommendations?.items ?? []);
   const priorityActions = buildPriorityActions(portfolioOverview, customerOverview, priorityFraudAlerts);
   const criticalRisks = buildCriticalRisks(portfolioOverview, customerOverview, priorityFraudAlerts);
@@ -553,6 +684,24 @@ export default function Dashboard() {
     (portfolioOverview?.kpis.alert_devices ?? 0) +
     (churnKpis?.high_risk_customers ?? 0) +
     (fraudKpis?.suspicious_calls ?? 0);
+  const estimatedFinancialLossMad = (cdrRecommendations?.items ?? []).reduce(
+    (sum, item) => sum + item.estimated_financial_loss,
+    0,
+  );
+  const averageLineCostMad =
+    customerConsumption && customerConsumption.kpis.total_lines > 0
+      ? customerConsumption.kpis.total_monthly_cost_mad / customerConsumption.kpis.total_lines
+      : 0;
+  const averageAiScoreInputs = [
+    fleetHealthScore?.fleet_health_score ?? 0,
+    advancedKpis?.average_fit_score ?? 0,
+    customerConsumption?.kpis.average_risk_score ?? 0,
+    fraudKpis?.average_risk_score ?? 0,
+  ].filter((value) => value > 0);
+  const averageAiScore =
+    averageAiScoreInputs.length > 0
+      ? averageAiScoreInputs.reduce((sum, value) => sum + value, 0) / averageAiScoreInputs.length
+      : 0;
   const deviceCategoryChartData = overview?.devices_by_category ?? [];
   const totalCategorizedDevices = deviceCategoryChartData.reduce(
     (sum, category) => sum + category.count,
@@ -589,7 +738,7 @@ export default function Dashboard() {
     ...criticalRisks.map((risk) => ({
       id: risk.id,
       severity: risk.severity,
-      module: risk.module === "Mobile" ? "Flotte mobile" : risk.module === "Churn" ? "Risque client" : "Fraude CDR",
+      module: risk.module === "Mobile" ? "Flotte mobile" : risk.module === "Churn" ? "Risque client" : "Appels suspects",
       title: risk.title,
       summary: risk.context,
       note: risk.scoreLabel,
@@ -659,23 +808,23 @@ export default function Dashboard() {
           <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
             <div className="max-w-3xl">
               <Badge className="border-[#BFDBFE] bg-[#EFF6FF] px-3 py-1 text-[#1D4ED8]">
-                Systeme decisionnel telecom pilote par l'IA
+                Aide a la decision pour votre flotte
               </Badge>
               <h1 className="mt-4 text-3xl font-bold tracking-[-0.03em] text-[#0F172A]">
-                Dashboard decisionnel
+                Vue d'ensemble de votre flotte
               </h1>
               <p className="mt-3 max-w-3xl text-sm leading-7 text-[#475569]">
-                Ce tableau de bord decisionnel permet d'optimiser la gestion de la flotte mobile et de
-                reduire le risque client en combinant analytique predictive et indicateurs de pilotage metier.
+                Cette vue d'ensemble vous aide a suivre les couts, reperer les risques et agir plus
+                vite sur les lignes, les forfaits et les appels inhabituels.
               </p>
             </div>
 
             <div className="flex flex-wrap gap-2">
               <Badge className="border-[#DCE5F1] bg-white px-3 py-1 text-[#475569]">
-                3 domaines analytiques integres
+                3 vues metier reunies
               </Badge>
               <Badge className="border-[#DCE5F1] bg-white px-3 py-1 text-[#475569]">
-                BI + analytique predictive
+                Suivi, alertes et previsions
               </Badge>
               <Badge className="border-[#DCE5F1] bg-white px-3 py-1 text-[#475569]">
                 Exposition portefeuille {formatMadValue(totalPortfolioExposure)}
@@ -724,12 +873,13 @@ export default function Dashboard() {
         visibility={dashboardPreferences.visibility}
         visibleCount={dashboardPreferences.visibleCount}
         onChange={dashboardPreferences.setWidgetVisible}
-        onReset={dashboardPreferences.resetVisibility}
+        onReset={dashboardPreferences.showAllWidgets}
+        resetLabel="Reinitialiser (tout afficher)"
       />
 
       {decisionWarnings.length > 0 ? (
         <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-[#92400E]">
-          Certains modules decisionnels sont partiels: {decisionWarnings.join(" ")}
+          Certaines vues sont partiellement disponibles: {decisionWarnings.join(" ")}
         </div>
       ) : null}
 
@@ -739,7 +889,7 @@ export default function Dashboard() {
           <div className="space-y-5">
             <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
               <div>
-                <h2 className="text-xl font-semibold text-[#0F172A]">Synthese executive</h2>
+                <h2 className="text-xl font-semibold text-[#0F172A]">Vue d'ensemble</h2>
                 <p className="mt-1 text-sm text-[#64748B]">
                   Lecture compacte des enjeux a presenter en soutenance ou en comite de pilotage.
                 </p>
@@ -750,6 +900,109 @@ export default function Dashboard() {
             </div>
 
             <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+              <div className="rounded-2xl border border-[#DBEAFE] bg-[linear-gradient(135deg,#EFF6FF,#FFFFFF)] p-5 md:col-span-2">
+                <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                  <div>
+                    <p className="text-xs uppercase tracking-[0.18em] text-[#64748B]">KPI consolides</p>
+                    <h3 className="mt-2 text-lg font-semibold text-[#0F172A]">
+                      Notebook flotte, consommation et fraude
+                    </h3>
+                    <p className="mt-1 text-sm text-[#64748B]">
+                      Lecture croisee de <span className="font-semibold">fleetconnect_advanced_kpi.csv</span>,
+                      <span className="font-semibold"> fleet_ai_results_morocco.csv</span> et
+                      <span className="font-semibold"> telecom_cdr_fraud_fleetconnect_enriched.csv</span>.
+                    </p>
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    <Badge className="border-blue-200 bg-white text-[#1D4ED8]">
+                      Fit moyen {advancedKpis ? `${advancedKpis.average_fit_score.toFixed(1)}/100` : "--"}
+                    </Badge>
+                    <Badge className="border-emerald-200 bg-white text-[#16A34A]">
+                      Economies {advancedKpis ? formatMadValue(advancedKpis.potential_savings_mad) : "--"}
+                    </Badge>
+                  </div>
+                </div>
+
+                <div className="mt-5 grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
+                  <KPICard
+                    title="Fleet Security Score"
+                    value={
+                      isAdvancedKpisLoading && isFleetHealthLoading
+                        ? "--"
+                        : formatRiskScoreLabel(
+                            advancedKpis?.fleet_health_score ?? fleetHealthScore?.fleet_health_score ?? 0,
+                          )
+                    }
+                    description="Score consolide notebook + IA live"
+                    icon={ShieldAlert}
+                    color="blue"
+                    emphasis="strong"
+                  />
+                  <KPICard
+                    title="Perte estimee"
+                    value={isCdrLoading ? "--" : formatCdrMadValue(estimatedFinancialLossMad)}
+                    description="Somme des pertes prioritaires CDR"
+                    icon={Wallet}
+                    color="red"
+                    emphasis="strong"
+                  />
+                  <KPICard
+                    title="Depassements"
+                    value={
+                      isCustomerLoading ? "--" : String(customerConsumption?.kpis.over_quota_lines ?? 0)
+                    }
+                    description="Lignes au-dessus du quota"
+                    icon={AlertTriangle}
+                    color="orange"
+                  />
+                  <KPICard
+                    title="Score IA moyen"
+                    value={isDecisionLoading ? "--" : formatRiskScoreLabel(averageAiScore)}
+                    description="Fit, churn, fraude et sante flotte"
+                    icon={Brain}
+                    color="purple"
+                  />
+                  <KPICard
+                    title="Fraud score"
+                    value={isCdrLoading ? "--" : formatRiskScoreLabel(fraudKpis?.average_risk_score ?? 0)}
+                    description="Moyenne des signaux suspects"
+                    icon={PhoneCall}
+                    color="purple"
+                  />
+                  <KPICard
+                    title="Fraudes detectees"
+                    value={isCdrLoading ? "--" : String(fraudKpis?.suspicious_calls ?? 0)}
+                    description="Appels suspects consolides"
+                    icon={ShieldAlert}
+                    color="red"
+                  />
+                  <KPICard
+                    title="Conso moyenne"
+                    value={
+                      isCustomerLoading
+                        ? "--"
+                        : `${(customerConsumption?.kpis.average_data_usage_gb ?? 0).toFixed(1)} Go`
+                    }
+                    description="Usage moyen par ligne"
+                    icon={Globe2}
+                    color="cyan"
+                  />
+                  <KPICard
+                    title="Cout moyen"
+                    value={isCustomerLoading ? "--" : formatMadValue(averageLineCostMad)}
+                    description="Mensuel par ligne active"
+                    icon={PiggyBank}
+                    color="green"
+                  />
+                </div>
+
+                {advancedKpis?.alerts_summary ? (
+                  <div className="mt-4 rounded-xl border border-white/80 bg-white/85 px-4 py-3 text-sm text-[#475569]">
+                    {advancedKpis.alerts_summary}
+                  </div>
+                ) : null}
+              </div>
+
               <KPICard
                 title="Exposition portefeuille"
                 value={formatMadValue(totalPortfolioExposure)}
@@ -781,6 +1034,13 @@ export default function Dashboard() {
                 color="purple"
               />
             </div>
+
+            <FleetHealthScoreCard
+              score={fleetHealthScore}
+              liveSnapshot={fleetHealthLiveSnapshot}
+              isLoading={isFleetHealthLoading}
+              errorMessage={fleetHealthErrorMessage}
+            />
           </div>
 
           <div className="rounded-2xl border border-[#E2E8F0] bg-[linear-gradient(180deg,#F8FAFC,#FFFFFF)] p-5">
@@ -957,7 +1217,7 @@ export default function Dashboard() {
       <section className="space-y-4">
         <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
           <div>
-            <h2 className="text-xl font-semibold text-[#0F172A]">Insights croises</h2>
+            <h2 className="text-xl font-semibold text-[#0F172A]">Analyse des couts et usages</h2>
             <p className="mt-1 text-sm text-[#64748B]">
               Lien entre budget device, risque churn et exposition fraude pour identifier les zones
               telecom a arbitrer.
@@ -1133,7 +1393,7 @@ export default function Dashboard() {
         <div className="rounded-[28px] border border-[#DCE5F1] bg-[linear-gradient(180deg,#FFFFFF,#F8FAFC)] p-5 shadow-sm">
           <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
             <div>
-              <h2 className="text-xl font-semibold text-[#0F172A]">Modules d'analyse</h2>
+              <h2 className="text-xl font-semibold text-[#0F172A]">Analyse de votre flotte</h2>
               <p className="mt-1 text-sm text-[#64748B]">
                 Un seul module detaille a la fois pour accelerer la lecture et garder le focus.
               </p>
@@ -1185,7 +1445,7 @@ export default function Dashboard() {
             >
               <div className="w-full text-left">
                 <div className="flex items-center justify-between gap-3">
-                  <span className="text-sm font-semibold text-[#0F172A]">Fraude CDR</span>
+                  <span className="text-sm font-semibold text-[#0F172A]">Appels suspects</span>
                   <Badge className="border-violet-200 bg-violet-50 text-[#7C3AED]">
                     {fraudKpis?.critical_alerts ?? 0} alertes critiques
                   </Badge>
@@ -1771,7 +2031,7 @@ export default function Dashboard() {
 
           <div className="flex flex-wrap gap-2">
             <Badge className="border-emerald-200 bg-emerald-50 px-3 py-1 text-[#059669]">
-              Jeu de donnees Telco Customer Churn
+              Base clients a suivre
             </Badge>
             <Badge className="border-[#DCE5F1] bg-white px-3 py-1 text-[#475569]">
               Impact revenu suivi
@@ -1826,7 +2086,7 @@ export default function Dashboard() {
           <div className="rounded-xl border border-gray-200 bg-white p-6">
             <div className="mb-4 flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
               <div>
-                <h3 className="text-lg font-semibold text-[#0F172A]">Churn par contrat</h3>
+                <h3 className="text-lg font-semibold text-[#0F172A]">Risque de depart par contrat</h3>
                 <p className="mt-1 text-sm text-[#64748B]">
                   Comparaison entre churn reel et clients a risque pour orienter la retention.
                 </p>
@@ -1860,7 +2120,7 @@ export default function Dashboard() {
             <div className="mb-4">
               <h3 className="text-lg font-semibold text-[#0F172A]">Revenu a risque et score moyen</h3>
               <p className="mt-1 text-sm text-[#64748B]">
-                Churn versus impact revenu, avec mise en evidence des paliers les plus critiques.
+                Comparaison entre le risque de depart et le revenu a proteger, avec un focus sur les paliers les plus sensibles.
               </p>
             </div>
 
@@ -1938,7 +2198,7 @@ export default function Dashboard() {
                           <span
                             className={`rounded-full px-2.5 py-1 text-xs font-medium ${getChurnClasses(customer.predicted_churn)}`}
                           >
-                            Churn predit {formatChurnLabel(customer.predicted_churn)}
+                            Risque estime {formatChurnLabel(customer.predicted_churn)}
                           </span>
                           <span className="rounded-full px-2 py-0.5 text-xs" style={operatorStyles}>
                             {customer.operator}
@@ -2027,7 +2287,7 @@ export default function Dashboard() {
       <section className="space-y-6">
         <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
           <div>
-            <h2 className="text-xl font-semibold text-[#0F172A]">Fraude CDR</h2>
+            <h2 className="text-xl font-semibold text-[#0F172A]">Appels suspects</h2>
             <p className="mt-1 text-sm text-[#64748B]">
               Surveillance des appels suspects, exposition cout et zones critiques a escalader.
             </p>

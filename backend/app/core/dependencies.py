@@ -12,6 +12,8 @@ from app.services.auth_service import (
     get_current_user,
     require_admin,
     require_manager_or_admin,
+    require_super_admin,
+    require_user_admin,
 )
 from app.services.user_service import get_user_by_id
 
@@ -22,7 +24,9 @@ DbSession = Annotated[Session, Depends(get_db_session)]
 CurrentUser = Annotated[User, Depends(get_current_user)]
 CurrentActiveUser = Annotated[User, Depends(get_current_active_user)]
 CurrentAdminUser = Annotated[User, Depends(require_admin)]
+CurrentUserAdmin = Annotated[User, Depends(require_user_admin)]
 CurrentManagerOrAdminUser = Annotated[User, Depends(require_manager_or_admin)]
+CurrentSuperAdminUser = Annotated[User, Depends(require_super_admin)]
 
 
 DEFAULT_PAGE_SIZE = settings.default_page_size
@@ -42,7 +46,7 @@ def get_accessible_user(
             detail="User not found",
         )
 
-    if current_user.id != target_user.id and current_user.role != "admin":
+    if current_user.id != target_user.id and current_user.role not in {"admin", "super_admin"}:
         security_logger.warning(
             "event=object_access_denied user_id=%s target_user_id=%s",
             current_user.id,

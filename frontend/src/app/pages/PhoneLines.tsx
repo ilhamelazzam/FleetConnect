@@ -39,6 +39,15 @@ import {
 } from "../components/ui/alert-dialog";
 import { Input } from "../components/ui/input";
 import {
+  Sheet,
+  SheetContent,
+  SheetHeader,
+  SheetFooter,
+  SheetTitle,
+  SheetDescription,
+} from "../components/ui/sheet";
+import { publishFilterPanelState, subscribeToFilterPanelToggle } from "../lib/filter-panel";
+import {
   Select,
   SelectContent,
   SelectItem,
@@ -75,12 +84,29 @@ const DEFAULT_PAGE_SIZE = 10;
 const EMPTY_DEPARTMENT_FILTER_VALUE = "__none__";
 
 type OccupationFilter = "all" | ApiPhoneLineOccupationStatus;
+type UsageFilter = "all" | "faible" | "moyen" | "intensif";
 
 interface OccupationMeta {
   label: string;
   helper: string;
   badgeClassName: string;
   subtleClassName: string;
+}
+
+interface LineFilterValues {
+  searchQuery: string;
+  selectedOccupation: OccupationFilter;
+  selectedOperator: string;
+  selectedDepartment: string;
+  selectedUsageType: UsageFilter;
+  costMin: string;
+  costMax: string;
+}
+
+interface ActiveFilterChip {
+  key: string;
+  label: string;
+  value: string;
 }
 
 type SurfaceTone = "primary" | "positive" | "warning" | "danger" | "ai";
@@ -308,6 +334,106 @@ function getUsageRate(line: ApiPhoneLine): number | null {
   return Math.min(line.current_data_usage_gb / line.monthly_limit, 1);
 }
 
+function getUsageFilterLabel(usageType: Exclude<UsageFilter, "all">): string {
+  if (usageType === "faible") {
+    return "Faible";
+  }
+  if (usageType === "moyen") {
+    return "Moyen";
+  }
+  return "Intensif";
+}
+
+function applyLineFilters(
+  lines: ApiPhoneLine[],
+  filters: LineFilterValues,
+  linePriceMap: Map<string, number>,
+): ApiPhoneLine[] {
+  const normalizedSearch = normalizeText(filters.searchQuery);
+  const minCost = Number(filters.costMin);
+  const maxCost = Number(filters.costMax);
+
+  return lines.filter((line) => {
+    const occupationStatus = deriveOccupationStatus(line);
+    const matchesOccupation =
+      filters.selectedOccupation === "all" || occupationStatus === filters.selectedOccupation;
+    const matchesOperator =
+      filters.selectedOperator === "all" || line.operator_name === filters.selectedOperator;
+    const matchesDepartment =
+      filters.selectedDepartment === "all"
+        ? true
+        : filters.selectedDepartment === EMPTY_DEPARTMENT_FILTER_VALUE
+          ? !line.department?.trim()
+          : (line.department ?? "") === filters.selectedDepartment;
+
+    const usageRate = getUsageRate(line);
+    const matchesUsage = (() => {
+      if (filters.selectedUsageType === "all") {
+        return true;
+      }
+      if (usageRate === null) {
+        return filters.selectedUsageType === "faible";
+      }
+      if (filters.selectedUsageType === "faible") {
+        return usageRate < 0.4;
+      }
+      if (filters.selectedUsageType === "moyen") {
+        return usageRate >= 0.4 && usageRate < 0.7;
+      }
+      return usageRate >= 0.7;
+    })();
+
+    const planKey = `${line.operator_name}:${line.plan_name}`;
+    const planPrice = linePriceMap.get(planKey) ?? linePriceMap.get(line.plan_name) ?? null;
+    const matchesCost = (() => {
+      if (filters.costMin.trim() !== "" && (planPrice === null || Number.isNaN(minCost))) {
+        return false;
+      }
+      if (filters.costMax.trim() !== "" && (planPrice === null || Number.isNaN(maxCost))) {
+        return false;
+      }
+      if (filters.costMin.trim() !== "" && planPrice !== null && planPrice < minCost) {
+        return false;
+      }
+      if (filters.costMax.trim() !== "" && planPrice !== null && planPrice > maxCost) {
+        return false;
+      }
+      return true;
+    })();
+
+    const haystack = normalizeText(
+      [
+        line.phone_number,
+        line.assigned_to ?? "",
+        line.department ?? "",
+        line.operator_name,
+        line.plan_name,
+        line.notes ?? "",
+      ].join(" "),
+    );
+    const matchesSearch = normalizedSearch.length === 0 || haystack.includes(normalizedSearch);
+
+    return (
+      matchesOccupation &&
+      matchesOperator &&
+      matchesDepartment &&
+      matchesUsage &&
+      matchesCost &&
+      matchesSearch
+    );
+  });
+}
+
+function formatLineResultsLabel(count: number): string {
+  if (count <= 0) {
+    return "Aucune ligne trouvee";
+  }
+  if (count === 1) {
+    return "1 ligne trouvee";
+  }
+  return `${formatNumberValue(count)} lignes trouvees`;
+}
+
 function downloadLinesAsCsv(lines: ApiPhoneLine[]) {
   const header = [
     "numero",
@@ -498,6 +624,17 @@ export default function PhoneLines() {
   const [selectedOccupation, setSelectedOccupation] = useState<OccupationFilter>("all");
   const [selectedOperator, setSelectedOperator] = useState("all");
   const [selectedDepartment, setSelectedDepartment] = useState("all");
+  const [selectedUsageType, setSelectedUsageType] = useState<UsageFilter>("all");
+  const [costMin, setCostMin] = useState("");
+  const [costMax, setCostMax] = useState("");
+  const [draftSearchQuery, setDraftSearchQuery] = useState(getPageSearchQuery(location.search));
+  const [draftSelectedOccupation, setDraftSelectedOccupation] = useState<OccupationFilter>("all");
+  const [draftSelectedOperator, setDraftSelectedOperator] = useState("all");
+  const [draftSelectedDepartment, setDraftSelectedDepartment] = useState("all");
+  const [draftSelectedUsageType, setDraftSelectedUsageType] = useState<UsageFilter>("all");
+  const [draftCostMin, setDraftCostMin] = useState("");
+  const [draftCostMax, setDraftCostMax] = useState("");
+  const [isFilterPanelOpen, setIsFilterPanelOpen] = useState(false);
   const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE);
   const [currentPage, setCurrentPage] = useState(1);
   const [refreshKey, setRefreshKey] = useState(0);
@@ -512,12 +649,14 @@ export default function PhoneLines() {
   const deferredSearch = useDeferredValue(searchQuery);
 
   useEffect(() => {
-    setSearchQuery(getPageSearchQuery(location.search));
+    const nextSearch = getPageSearchQuery(location.search);
+    setSearchQuery(nextSearch);
+    setDraftSearchQuery(nextSearch);
   }, [location.search]);
 
   useEffect(() => {
     setCurrentPage(1);
-  }, [deferredSearch, pageSize, selectedOccupation, selectedOperator, selectedDepartment]);
+  }, [deferredSearch, pageSize, selectedOccupation, selectedOperator, selectedDepartment, selectedUsageType, costMin, costMax]);
 
   useEffect(() => {
     let isMounted = true;
@@ -565,12 +704,16 @@ export default function PhoneLines() {
           statsResult.status === "rejected" ||
           occupationResult.status === "rejected"
         ) {
-          const rootError =
-            linesResult.status === "rejected"
-              ? linesResult.reason
-              : statsResult.status === "rejected"
-                ? statsResult.reason
-                : occupationResult.reason;
+          let rootError: unknown = new Error("Erreur inconnue.");
+
+          if (linesResult.status === "rejected") {
+            rootError = linesResult.reason;
+          } else if (statsResult.status === "rejected") {
+            rootError = statsResult.reason;
+          } else if (occupationResult.status === "rejected") {
+            rootError = occupationResult.reason;
+          }
+
           throw rootError;
         }
 
@@ -639,6 +782,31 @@ export default function PhoneLines() {
 
   const planOptions = useMemo(() => buildPlanOptions(allLines, plans), [allLines, plans]);
 
+  const linePriceMap = useMemo(() => {
+    const map = new Map<string, number>();
+    plans.forEach((plan) => {
+      map.set(`${plan.operator_name}:${plan.name}`, plan.monthly_price);
+      map.set(plan.name, plan.monthly_price);
+    });
+    return map;
+  }, [plans]);
+
+  const activeFiltersCount = useMemo(() => {
+    let count = 0;
+    if (selectedOccupation !== "all") count += 1;
+    if (selectedOperator !== "all") count += 1;
+    if (selectedDepartment !== "all") count += 1;
+    if (selectedUsageType !== "all") count += 1;
+    if (costMin.trim() !== "") count += 1;
+    if (costMax.trim() !== "") count += 1;
+    if (searchQuery.trim() !== "") count += 1;
+    return count;
+  }, [selectedOccupation, selectedOperator, selectedDepartment, selectedUsageType, costMin, costMax, searchQuery]);
+
+  useEffect(() => {
+    publishFilterPanelState({ activeCount: activeFiltersCount, isOpen: isFilterPanelOpen });
+  }, [activeFiltersCount, isFilterPanelOpen]);
+
   useEffect(() => {
     if (selectedOperator !== "all" && !operatorOptions.includes(selectedOperator)) {
       setSelectedOperator("all");
@@ -654,6 +822,35 @@ export default function PhoneLines() {
       setSelectedDepartment("all");
     }
   }, [departmentOptions, selectedDepartment]);
+
+  useEffect(() => {
+    if (isFilterPanelOpen) {
+      setDraftSearchQuery(searchQuery);
+      setDraftSelectedOccupation(selectedOccupation);
+      setDraftSelectedOperator(selectedOperator);
+      setDraftSelectedDepartment(selectedDepartment);
+      setDraftSelectedUsageType(selectedUsageType);
+      setDraftCostMin(costMin);
+      setDraftCostMax(costMax);
+    }
+  }, [
+    isFilterPanelOpen,
+    searchQuery,
+    selectedOccupation,
+    selectedOperator,
+    selectedDepartment,
+    selectedUsageType,
+    costMin,
+    costMax,
+  ]);
+
+  useEffect(() => {
+    const unsubscribe = subscribeToFilterPanelToggle(() => {
+      setIsFilterPanelOpen((previousValue) => !previousValue);
+    });
+
+    return unsubscribe;
+  }, []);
 
   const filterOptions = useMemo(
     () => [
@@ -683,51 +880,169 @@ export default function PhoneLines() {
     [resolvedCounts],
   );
 
-  const filteredLines = useMemo(() => {
-    const normalizedSearch = normalizeText(deferredSearch);
+  const filteredLines = useMemo(
+    () =>
+      applyLineFilters(
+        allLines,
+        {
+          searchQuery: deferredSearch,
+          selectedOccupation,
+          selectedOperator,
+          selectedDepartment,
+          selectedUsageType,
+          costMin,
+          costMax,
+        },
+        linePriceMap,
+      ),
+    [
+      allLines,
+      deferredSearch,
+      selectedDepartment,
+      selectedOccupation,
+      selectedOperator,
+      selectedUsageType,
+      costMax,
+      costMin,
+      linePriceMap,
+    ],
+  );
 
-    return allLines.filter((line) => {
-      const occupationStatus = deriveOccupationStatus(line);
-      const matchesOccupation =
-        selectedOccupation === "all" || occupationStatus === selectedOccupation;
-      const matchesOperator =
-        selectedOperator === "all" || line.operator_name === selectedOperator;
-      const matchesDepartment =
-        selectedDepartment === "all"
-          ? true
-          : selectedDepartment === EMPTY_DEPARTMENT_FILTER_VALUE
-            ? !line.department?.trim()
-            : (line.department ?? "") === selectedDepartment;
-      const haystack = normalizeText(
-        [
-          line.phone_number,
-          line.assigned_to ?? "",
-          line.department ?? "",
-          line.operator_name,
-          line.plan_name,
-          line.notes ?? "",
-        ].join(" "),
-      );
-      const matchesSearch =
-        normalizedSearch.length === 0 || haystack.includes(normalizedSearch);
-
-      return (
-        matchesOccupation &&
-        matchesOperator &&
-        matchesDepartment &&
-        matchesSearch
-      );
-    });
-  }, [
-    allLines,
-    deferredSearch,
-    selectedDepartment,
-    selectedOccupation,
-    selectedOperator,
-  ]);
+  const draftFilteredCount = useMemo(
+    () =>
+      applyLineFilters(
+        allLines,
+        {
+          searchQuery: draftSearchQuery,
+          selectedOccupation: draftSelectedOccupation,
+          selectedOperator: draftSelectedOperator,
+          selectedDepartment: draftSelectedDepartment,
+          selectedUsageType: draftSelectedUsageType,
+          costMin: draftCostMin,
+          costMax: draftCostMax,
+        },
+        linePriceMap,
+      ).length,
+    [
+      allLines,
+      draftCostMax,
+      draftCostMin,
+      draftSearchQuery,
+      draftSelectedDepartment,
+      draftSelectedOccupation,
+      draftSelectedOperator,
+      draftSelectedUsageType,
+      linePriceMap,
+    ],
+  );
 
   const totalPages = Math.max(1, Math.ceil(filteredLines.length / pageSize));
   const currentPageSafe = Math.min(currentPage, totalPages);
+
+  const activeFilterSummary = useMemo(() => {
+    const summary: string[] = [];
+    if (selectedOperator !== "all") {
+      summary.push(`Opérateur: ${selectedOperator}`);
+    }
+    if (selectedOccupation !== "all") {
+      summary.push(`Statut: ${getOccupationMeta(selectedOccupation).label}`);
+    }
+    if (selectedDepartment === EMPTY_DEPARTMENT_FILTER_VALUE) {
+      summary.push("Département: Sans département");
+    } else if (selectedDepartment !== "all") {
+      summary.push(`Département: ${selectedDepartment}`);
+    }
+    if (selectedUsageType !== "all") {
+      summary.push(
+        `Usage: ${
+          selectedUsageType === "faible"
+            ? "Faible"
+            : selectedUsageType === "moyen"
+              ? "Moyen"
+              : "Intensif"
+        }`,
+      );
+    }
+    if (costMin.trim() !== "" || costMax.trim() !== "") {
+      summary.push(`Coût: ${costMin || "0"} - ${costMax || "∞"} MAD`);
+    }
+    if (searchQuery.trim() !== "") {
+      summary.push(`Recherche: ${searchQuery}`);
+    }
+    return summary;
+  }, [
+    selectedDepartment,
+    selectedOccupation,
+    selectedOperator,
+    selectedUsageType,
+    costMax,
+    costMin,
+    searchQuery,
+  ]);
+
+  const activeFilterChips = useMemo(
+    () =>
+      activeFilterSummary.map<ActiveFilterChip>((summary, index) => {
+        const [rawLabel, ...valueParts] = summary.split(":");
+        return {
+          key: `${rawLabel}-${index}`,
+          label: rawLabel.trim(),
+          value: valueParts.join(":").trim(),
+        };
+      }),
+    [activeFilterSummary],
+  );
+
+  const hasActiveFilters = activeFilterSummary.length > 0;
+  const resultsLabel = formatLineResultsLabel(filteredLines.length);
+  const draftResultsLabel = formatLineResultsLabel(draftFilteredCount);
+
+  const handleResetFilters = () => {
+    const resetSearch = "";
+    setSelectedOccupation("all");
+    setSelectedOperator("all");
+    setSelectedDepartment("all");
+    setSelectedUsageType("all");
+    setCostMin("");
+    setCostMax("");
+    setSearchQuery(resetSearch);
+    setDraftSearchQuery(resetSearch);
+    setDraftSelectedOccupation("all");
+    setDraftSelectedOperator("all");
+    setDraftSelectedDepartment("all");
+    setDraftSelectedUsageType("all");
+    setDraftCostMin("");
+    setDraftCostMax("");
+    setCurrentPage(1);
+    setIsFilterPanelOpen(false);
+    navigate(buildSearchUrl(location.pathname, location.search, resetSearch), { replace: true });
+  };
+
+  const handleApplyFilters = () => {
+    console.log("Appliquer filtres", {
+      operator: draftSelectedOperator,
+      status: draftSelectedOccupation,
+      department: draftSelectedDepartment,
+      usageType: draftSelectedUsageType,
+      minCost: draftCostMin,
+      maxCost: draftCostMax,
+      searchText: draftSearchQuery,
+      totalBefore: allLines.length,
+    });
+
+    setSelectedOccupation(draftSelectedOccupation);
+    setSelectedOperator(draftSelectedOperator);
+    setSelectedDepartment(draftSelectedDepartment);
+    setSelectedUsageType(draftSelectedUsageType);
+    setCostMin(draftCostMin);
+    setCostMax(draftCostMax);
+    setSearchQuery(draftSearchQuery);
+    setCurrentPage(1);
+    setIsFilterPanelOpen(false);
+    navigate(buildSearchUrl(location.pathname, location.search, draftSearchQuery), {
+      replace: true,
+    });
+  };
 
   useEffect(() => {
     if (currentPage > totalPages) {
@@ -925,15 +1240,15 @@ export default function PhoneLines() {
           <div className="max-w-3xl">
             <div className="inline-flex items-center gap-2 rounded-full border border-[#BFDBFE] bg-white/80 px-3 py-1 text-xs font-semibold uppercase tracking-[0.18em] text-[#1D4ED8] shadow-sm backdrop-blur">
               <Phone className="h-3.5 w-3.5" />
-              Gestion CRUD telecom
+              Gestion des lignes telephoniques
             </div>
             <h1 className="mt-4 text-4xl font-semibold tracking-[-0.05em] text-[#0F172A]">
-              Lignes telecom
+              Lignes telephoniques
             </h1>
             <p className="mt-3 max-w-2xl text-sm leading-7 text-[#64748B]">
-              Pilotez la flotte dans une vue unique avec creation, lecture, modification et
-              suppression. Les filtres, badges de statut et actions rapides sont concus pour un
-              usage quotidien type dashboard SaaS.
+              Retrouvez toutes vos lignes dans une vue claire pour ajouter, mettre a jour ou retirer
+              une ligne facilement. Les filtres, statuts et actions rapides sont penses pour un suivi
+              quotidien simple.
             </p>
 
             <div className="mt-6 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
@@ -981,7 +1296,7 @@ export default function PhoneLines() {
                 disabled={filteredLines.length === 0 || isLoading}
               >
                 <Download className="h-4 w-4" />
-                Exporter
+                Telecharger
               </Button>
               <Button
                 type="button"
@@ -1000,9 +1315,9 @@ export default function PhoneLines() {
             </div>
             <div className="rounded-2xl border border-[#DCE5F1] bg-white/80 px-4 py-3 text-sm text-[#64748B] shadow-sm backdrop-blur">
               {canManageLines ? (
-                "Ajout, modification et suppression disponibles depuis la colonne Actions."
+                "Vous pouvez ajouter, modifier ou retirer une ligne depuis la colonne Actions."
               ) : (
-                "Mode lecture seule: les actions CRUD sont reservees aux managers et administrateurs."
+                "Mode lecture seule: seules les personnes autorisees peuvent modifier les lignes."
               )}
             </div>
           </div>
@@ -1058,15 +1373,23 @@ export default function PhoneLines() {
               Tableau de gestion des lignes
             </h2>
             <p className="mt-2 max-w-2xl text-sm leading-6 text-[#64748B]">
-              Recherchez, filtrez et pilotez la flotte en un seul endroit. Les actions CRUD sont
-              visibles a droite de chaque ligne pour reduire les frictions operateur.
+              Recherchez, filtrez et pilotez la flotte en un seul endroit. Les actions de gestion
+              sont visibles a droite de chaque ligne pour aller plus vite au quotidien.
             </p>
           </div>
 
           <div className="flex flex-wrap items-center gap-2 rounded-2xl border border-[#DCE5F1] bg-[#F8FAFC] px-4 py-3 text-sm text-[#475569]">
-            <span>{filteredLines.length} ligne(s) visibles</span>
+            <span>{resultsLabel}</span>
             <span className="h-1 w-1 rounded-full bg-[#94A3B8]" />
             <span>{formatNumberValue(resolvedCounts.total)} dans le parc</span>
+            {hasActiveFilters ? (
+              <>
+                <span className="h-1 w-1 rounded-full bg-[#94A3B8]" />
+                <span className="inline-flex items-center rounded-full border border-[#BFDBFE] bg-white px-3 py-1 text-xs font-semibold uppercase tracking-[0.14em] text-[#1D4ED8]">
+                  Filtres actifs : {activeFiltersCount}
+                </span>
+              </>
+            ) : null}
             {isRefreshing ? (
               <>
                 <span className="h-1 w-1 rounded-full bg-[#94A3B8]" />
@@ -1118,6 +1441,35 @@ export default function PhoneLines() {
             );
           })}
         </div>
+
+        {hasActiveFilters ? (
+          <div className="mt-6 rounded-[24px] border border-[#DBEAFE] bg-[#EFF6FF] px-4 py-4 text-sm text-[#0F172A]">
+            <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="rounded-full border border-blue-200 bg-white px-3 py-1 text-xs font-semibold uppercase tracking-[0.16em] text-[#1D4ED8]">
+                  Filtres actifs
+                </span>
+                {activeFilterChips.map((chip) => (
+                  <span
+                    key={chip.key}
+                    className="inline-flex items-center gap-2 rounded-full border border-[#BFDBFE] bg-white px-3 py-1 text-xs font-medium text-[#1E3A8A]"
+                  >
+                    <span className="font-semibold">{chip.label} :</span>
+                    <span>{chip.value}</span>
+                  </span>
+                ))}
+              </div>
+              <Button
+                type="button"
+                variant="outline"
+                className="h-10 rounded-xl border-[#DCE5F1] bg-white text-[#475569]"
+                onClick={handleResetFilters}
+              >
+                Réinitialiser
+              </Button>
+            </div>
+          </div>
+        ) : null}
 
         <div className="mt-6 grid gap-3 xl:grid-cols-[minmax(0,1.55fr)_220px_240px_140px]">
           <div className="relative">
@@ -1221,7 +1573,7 @@ export default function PhoneLines() {
             <div className="border-b border-[#E2E8F0] bg-[linear-gradient(180deg,#FBFDFF,#F8FAFC)] px-5 py-4">
               <div className="flex items-center gap-3 text-sm text-[#475569]">
                 <Badge className="border-[#DBEAFE] bg-[#EFF6FF] text-[#1D4ED8]">
-                  CRUD complet
+                  Gestion complete
                 </Badge>
                 <span>Actions visibles a droite</span>
               </div>
@@ -1478,6 +1830,185 @@ export default function PhoneLines() {
           </div>
         </div>
       </section>
+
+      <Sheet open={isFilterPanelOpen} onOpenChange={setIsFilterPanelOpen}>
+        <SheetContent
+          side="right"
+          className="w-full overflow-hidden border-l border-[#DCE5F1] bg-white p-0 shadow-[0_18px_60px_-24px_rgba(15,23,42,0.22)] sm:max-w-[540px]"
+        >
+          <SheetHeader className="border-b border-[#E2E8F0] bg-[linear-gradient(180deg,#F8FAFC_0%,#FFFFFF_100%)] px-6 py-6">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <SheetTitle className="text-2xl font-semibold text-[#0F172A]">
+                  Panneau de filtres
+                </SheetTitle>
+                <SheetDescription className="mt-2 max-w-xl text-sm leading-6 text-[#475569]">
+                  Affinez les lignes affichées dans le tableau et combinez plusieurs critères.
+                </SheetDescription>
+              </div>
+            </div>
+          </SheetHeader>
+
+          <div className="flex min-h-0 flex-1 flex-col">
+            <div className="flex-1 overflow-y-auto px-6 py-6">
+              <div className="rounded-[28px] border border-[#E6EEFB] bg-[#F8FAFE] p-5 shadow-sm">
+                <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[#4F6A8A]">
+                  Critères principaux
+                </p>
+                <p className="mt-2 text-sm text-[#64748B]">
+                  Utilisez plusieurs filtres pour réduire rapidement la liste.
+                </p>
+              </div>
+
+              <div className="mt-6 space-y-5">
+              <div>
+                <label className="mb-2 block text-sm font-medium text-[#475569]">
+                  Opérateur
+                </label>
+                <Select value={draftSelectedOperator} onValueChange={setDraftSelectedOperator}>
+                  <SelectTrigger className="h-12 rounded-2xl border-[#DCE5F1] bg-[#F8FAFC] w-full">
+                    <SelectValue placeholder="Tous les opérateurs" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Tous les opérateurs</SelectItem>
+                    {operatorOptions.map((operatorName) => (
+                      <SelectItem key={operatorName} value={operatorName}>
+                        {operatorName}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div>
+                <label className="mb-2 block text-sm font-medium text-[#475569]">
+                  Statut ligne
+                </label>
+                <Select value={draftSelectedOccupation} onValueChange={(value) => setDraftSelectedOccupation(value as OccupationFilter)}>
+                  <SelectTrigger className="h-12 rounded-2xl border-[#DCE5F1] bg-[#F8FAFC] w-full">
+                    <SelectValue placeholder="Tous les statuts" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Tous les statuts</SelectItem>
+                    <SelectItem value="libre">Libre</SelectItem>
+                    <SelectItem value="attribuee">Attribuée</SelectItem>
+                    <SelectItem value="en_cours">En cours</SelectItem>
+                    <SelectItem value="suspendue">Suspendue</SelectItem>
+                    <SelectItem value="inactive">Inactive</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div>
+                <label className="mb-2 block text-sm font-medium text-[#475569]">
+                  Département
+                </label>
+                <Select value={draftSelectedDepartment} onValueChange={setDraftSelectedDepartment}>
+                  <SelectTrigger className="h-12 rounded-2xl border-[#DCE5F1] bg-[#F8FAFC] w-full">
+                    <SelectValue placeholder="Tous les départements" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Tous les départements</SelectItem>
+                    {departmentOptions.map((departmentName) => (
+                      <SelectItem key={departmentName} value={departmentName}>
+                        {departmentName}
+                      </SelectItem>
+                    ))}
+                    {hasLinesWithoutDepartment ? (
+                      <SelectItem value={EMPTY_DEPARTMENT_FILTER_VALUE}>
+                        Sans département
+                      </SelectItem>
+                    ) : null}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div>
+                <label className="mb-2 block text-sm font-medium text-[#475569]">
+                  Type d’usage
+                </label>
+                <Select value={draftSelectedUsageType} onValueChange={(value) => setDraftSelectedUsageType(value as "all" | "faible" | "moyen" | "intensif")}>
+                  <SelectTrigger className="h-12 rounded-2xl border-[#DCE5F1] bg-[#F8FAFC] w-full">
+                    <SelectValue placeholder="Tous les niveaux" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Tous les usages</SelectItem>
+                    <SelectItem value="faible">Faible</SelectItem>
+                    <SelectItem value="moyen">Moyen</SelectItem>
+                    <SelectItem value="intensif">Intensif</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="grid gap-3 sm:grid-cols-2">
+                <div>
+                  <label className="mb-2 block text-sm font-medium text-[#475569]">Coût min (MAD)</label>
+                  <Input
+                    type="number"
+                    value={draftCostMin}
+                    onChange={(event) => setDraftCostMin(event.target.value)}
+                    placeholder="Min"
+                    className="h-12 rounded-2xl border-[#DCE5F1] bg-[#F8FAFC]"
+                  />
+                </div>
+                <div>
+                  <label className="mb-2 block text-sm font-medium text-[#475569]">Coût max (MAD)</label>
+                  <Input
+                    type="number"
+                    value={draftCostMax}
+                    onChange={(event) => setDraftCostMax(event.target.value)}
+                    placeholder="Max"
+                    className="h-12 rounded-2xl border-[#DCE5F1] bg-[#F8FAFC]"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="mb-2 block text-sm font-medium text-[#475569]">
+                  Recherche texte
+                </label>
+                <Input
+                  value={draftSearchQuery}
+                  onChange={(event) => setDraftSearchQuery(event.target.value)}
+                  placeholder="Numéro ou collaborateur"
+                  className="h-12 rounded-2xl border-[#DCE5F1] bg-[#F8FAFC]"
+                />
+              </div>
+            </div>
+            </div>
+          </div>
+
+          <SheetFooter className="border-t border-[#E2E8F0] bg-white px-6 py-4">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div className="flex flex-wrap gap-3">
+                <Button
+                  type="button"
+                  className="h-11 rounded-2xl bg-[linear-gradient(135deg,#2563EB,#1D4ED8)] px-5 text-white"
+                  onClick={handleApplyFilters}
+                >
+                  Appliquer filtres
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="h-11 rounded-2xl border-[#DCE5F1] bg-white text-[#475569]"
+                  onClick={handleResetFilters}
+                >
+                  Réinitialiser
+                </Button>
+              </div>
+              <Button
+                type="button"
+                variant="ghost"
+                className="h-11 rounded-2xl text-[#475569]"
+                onClick={() => setIsFilterPanelOpen(false)}
+              >
+                Fermer
+              </Button>
+            </div>
+          </SheetFooter>
+        </SheetContent>
+      </Sheet>
 
       <AddLineModal
         open={isModalOpen}

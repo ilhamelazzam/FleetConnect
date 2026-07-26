@@ -1,55 +1,54 @@
-import { useEffect, useState } from "react";
-import { Check, Eye, Lightbulb, Search, X } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+import { useNavigate } from "react-router";
+import { Check, Eye, Lightbulb, Search, ShieldAlert, Sparkles, X } from "lucide-react";
 import { toast } from "sonner";
 
+import AIRiskInsightCard from "../components/AIRiskInsightCard";
 import AIRecommendationBlock from "../components/AIRecommendationBlock";
 import DashboardSection from "../components/dashboard/DashboardSection";
-import AIRiskInsightCard from "../components/AIRiskInsightCard";
 import WidgetVisibilityManager from "../components/dashboard/WidgetVisibilityManager";
+import { Badge } from "../components/ui/badge";
+import { Button } from "../components/ui/button";
 import { useAuth } from "../context/AuthContext";
 import {
   ApiError,
-  customerChurnApi,
-  type ApiCustomerChurnFilters,
-  type ApiCustomerChurnRecommendationList,
+  cdrAnalyticsApi,
+  type ApiCdrFilters,
+  type ApiCdrRecommendation,
+  type ApiCdrRecommendationList,
 } from "../lib/api";
-import { buildRecommendationSummary, enrichRecommendation } from "../lib/churn-recommendations";
 import {
-  formatContractLabel,
-  formatCustomerFactorLabel,
-  formatCustomerRiskLabel,
-  formatInternetServiceLabel,
+  formatCallZoneLabel,
+  formatFraudTypeLabel,
   formatMadValue,
-  formatRiskProbability,
   formatRiskScore,
-  formatTenure,
-  getCustomerRiskClasses,
-  getOperatorStyles,
-} from "../lib/customer-churn";
+  formatSeverityLabel,
+  getSeverityClasses,
+} from "../lib/cdr-analytics";
 import {
   type DashboardWidgetDefinition,
   useDashboardPreferences,
 } from "../hooks/useDashboardPreferences";
 
-const PAGE_SIZE = 5;
+const PAGE_SIZE = 6;
 
 const recommendationWidgets: DashboardWidgetDefinition[] = [
   {
     id: "summary",
-    label: "Synthese decision IA",
-    description: "Bandeau executive avec economies, lignes impactees et decisions prises.",
+    label: "Pilotage recommandations",
+    description: "Vision executive des priorités IA, des pertes et des décisions locales.",
     defaultVisible: true,
   },
   {
     id: "filters",
-    label: "Filtres recommandations",
-    description: "Recherche et filtres departement / risque.",
+    label: "Filtres",
+    description: "Recherche par opérateur, département, zone et sévérité.",
     defaultVisible: true,
   },
   {
     id: "recommendations",
-    label: "Liste recommandations",
-    description: "Cartes IA paginees avec examen detaille.",
+    label: "Console d'actions",
+    description: "Cartes actionnables issues du dataset CDR enrichi.",
     defaultVisible: true,
   },
 ];
@@ -64,17 +63,36 @@ function normalizeError(error: unknown, fallbackMessage: string): string {
   return fallbackMessage;
 }
 
-export default function Recommendations() {
-  const { token, user } = useAuth();
-  const dashboardPreferences = useDashboardPreferences("recommendations-ai", recommendationWidgets, user?.email);
+function getPriorityTone(priority: string): string {
+  if (priority === "P1") {
+    return "border-red-200 bg-red-50 text-[#DC2626]";
+  }
+  if (priority === "P2") {
+    return "border-orange-200 bg-orange-50 text-[#F97316]";
+  }
+  if (priority === "P3") {
+    return "border-violet-200 bg-violet-50 text-[#6D28D9]";
+  }
+  return "border-slate-200 bg-slate-50 text-[#475569]";
+}
 
-  const [filters, setFilters] = useState<ApiCustomerChurnFilters | null>(null);
-  const [recommendations, setRecommendations] = useState<ApiCustomerChurnRecommendationList | null>(null);
+export default function Recommendations() {
+  const navigate = useNavigate();
+  const { token, user } = useAuth();
+  const dashboardPreferences = useDashboardPreferences(
+    "historical-cdr-recommendations",
+    recommendationWidgets,
+    user?.email,
+  );
+
+  const [filters, setFilters] = useState<ApiCdrFilters | null>(null);
+  const [recommendations, setRecommendations] = useState<ApiCdrRecommendationList | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
+  const [selectedOperator, setSelectedOperator] = useState("all");
   const [selectedDepartment, setSelectedDepartment] = useState("all");
-  const [selectedRiskLevel, setSelectedRiskLevel] = useState("all");
+  const [selectedSeverity, setSelectedSeverity] = useState("all");
   const [offset, setOffset] = useState(0);
   const [acceptedIds, setAcceptedIds] = useState<number[]>([]);
   const [rejectedIds, setRejectedIds] = useState<number[]>([]);
@@ -89,13 +107,13 @@ export default function Recommendations() {
       }
 
       try {
-        const response = await customerChurnApi.filters(token);
+        const response = await cdrAnalyticsApi.filters(token);
         if (isMounted) {
           setFilters(response);
         }
       } catch (error) {
         if (isMounted) {
-          setErrorMessage(normalizeError(error, "Impossible de charger les filtres recommandations."));
+          setErrorMessage(normalizeError(error, "Impossible de charger les filtres CDR."));
         }
       }
     }
@@ -109,7 +127,7 @@ export default function Recommendations() {
 
   useEffect(() => {
     setOffset(0);
-  }, [searchQuery, selectedDepartment, selectedRiskLevel]);
+  }, [searchQuery, selectedOperator, selectedDepartment, selectedSeverity]);
 
   useEffect(() => {
     let isMounted = true;
@@ -127,10 +145,11 @@ export default function Recommendations() {
       setErrorMessage(null);
 
       try {
-        const response = await customerChurnApi.recommendations(token, {
+        const response = await cdrAnalyticsApi.recommendations(token, {
           search: searchQuery.trim() || undefined,
+          operator: selectedOperator !== "all" ? selectedOperator : undefined,
           department: selectedDepartment !== "all" ? selectedDepartment : undefined,
-          risk_level: selectedRiskLevel !== "all" ? selectedRiskLevel : undefined,
+          severity: selectedSeverity !== "all" ? selectedSeverity : undefined,
           offset,
           limit: PAGE_SIZE,
         });
@@ -141,7 +160,9 @@ export default function Recommendations() {
       } catch (error) {
         if (isMounted) {
           setRecommendations(null);
-          setErrorMessage(normalizeError(error, "Impossible de charger les recommandations IA."));
+          setErrorMessage(
+            normalizeError(error, "Impossible de charger les recommandations IA."),
+          );
         }
       } finally {
         if (isMounted) {
@@ -155,119 +176,119 @@ export default function Recommendations() {
     return () => {
       isMounted = false;
     };
-  }, [token, offset, searchQuery, selectedDepartment, selectedRiskLevel]);
+  }, [token, offset, searchQuery, selectedOperator, selectedDepartment, selectedSeverity]);
 
-  const summary = buildRecommendationSummary(recommendations?.items ?? []);
-  const enrichedRecommendations = (recommendations?.items ?? [])
-    .map((recommendation) => enrichRecommendation(recommendation, summary))
-    .sort((leftRecommendation, rightRecommendation) => {
-      if (leftRecommendation.priorityScore !== rightRecommendation.priorityScore) {
-        return rightRecommendation.priorityScore - leftRecommendation.priorityScore;
-      }
-      return rightRecommendation.simulatedFinancialGainMad - leftRecommendation.simulatedFinancialGainMad;
-    });
+  const orderedRecommendations = useMemo(
+    () =>
+      [...(recommendations?.items ?? [])].sort((left, right) => {
+        if (left.investigation_priority !== right.investigation_priority) {
+          return left.investigation_priority.localeCompare(right.investigation_priority);
+        }
+        if (left.estimated_financial_loss !== right.estimated_financial_loss) {
+          return right.estimated_financial_loss - left.estimated_financial_loss;
+        }
+        return right.fraud_risk_score_100 - left.fraud_risk_score_100;
+      }),
+    [recommendations],
+  );
 
   const selectedRecommendation =
-    enrichedRecommendations.find(
-      (recommendation) => recommendation.customer_row_id === selectedRecommendationId,
+    orderedRecommendations.find(
+      (recommendation) => recommendation.cdr_row_id === selectedRecommendationId,
     ) ?? null;
 
-  const totalSavingsMad = enrichedRecommendations.reduce(
-    (sum, recommendation) => sum + recommendation.simulatedFinancialGainMad,
+  const totalEstimatedLoss = orderedRecommendations.reduce(
+    (sum, recommendation) => sum + recommendation.estimated_financial_loss,
     0,
   );
-  const totalImpactedLines = enrichedRecommendations.reduce(
-    (sum, recommendation) => sum + recommendation.simulatedImpactedLines,
-    0,
-  );
+  const p1Count = orderedRecommendations.filter(
+    (recommendation) => recommendation.investigation_priority === "P1",
+  ).length;
+  const acceptedCount = acceptedIds.length;
   const currentPage = Math.floor((recommendations?.offset ?? 0) / PAGE_SIZE) + 1;
   const totalPages = recommendations ? Math.max(1, Math.ceil(recommendations.total / PAGE_SIZE)) : 1;
 
-  function getDecisionStatus(customerRowId: number): string {
-    if (acceptedIds.includes(customerRowId)) {
-      return "Acceptee";
+  function getDecisionStatus(cdrRowId: number): string {
+    if (acceptedIds.includes(cdrRowId)) {
+      return "Appliquee";
     }
-    if (rejectedIds.includes(customerRowId)) {
-      return "Rejetee";
+    if (rejectedIds.includes(cdrRowId)) {
+      return "Ecartee";
     }
-    return "A examiner";
+    return "A arbitrer";
   }
 
-  function getRecommendationLifecycleStatus(customerRowId: number): string {
-    if (acceptedIds.includes(customerRowId)) {
-      return "En cours";
-    }
-    if (rejectedIds.includes(customerRowId)) {
-      return "Traitee";
-    }
-    return "Non traitee";
-  }
-
-  function handleAccept(customerRowId: number, customerId: string) {
-    setAcceptedIds((previousIds) =>
-      previousIds.includes(customerRowId) ? previousIds : [...previousIds, customerRowId],
+  function handleAccept(recommendation: ApiCdrRecommendation) {
+    setAcceptedIds((current) =>
+      current.includes(recommendation.cdr_row_id)
+        ? current
+        : [...current, recommendation.cdr_row_id],
     );
-    setRejectedIds((previousIds) =>
-      previousIds.filter((value) => value !== customerRowId),
-    );
-    toast.success("Recommandation acceptee", {
-      description: `${customerId} passe en action prioritaire.`,
+    setRejectedIds((current) => current.filter((item) => item !== recommendation.cdr_row_id));
+    toast.success("Recommandation appliquee", {
+      description: `Action prioritaire engagee sur l'alerte ${recommendation.cdr_row_id}.`,
     });
   }
 
-  function handleReject(customerRowId: number, customerId: string) {
-    setRejectedIds((previousIds) =>
-      previousIds.includes(customerRowId) ? previousIds : [...previousIds, customerRowId],
+  function handleReject(recommendation: ApiCdrRecommendation) {
+    setRejectedIds((current) =>
+      current.includes(recommendation.cdr_row_id)
+        ? current
+        : [...current, recommendation.cdr_row_id],
     );
-    setAcceptedIds((previousIds) =>
-      previousIds.filter((value) => value !== customerRowId),
-    );
-    toast.success("Recommandation rejetee", {
-      description: `${customerId} sort de la file de traitement.`,
+    setAcceptedIds((current) => current.filter((item) => item !== recommendation.cdr_row_id));
+    toast.success("Recommandation classee", {
+      description: `L'alerte ${recommendation.cdr_row_id} sort de la file prioritaire.`,
     });
   }
 
   return (
     <div className="space-y-6 p-6">
       <DashboardSection isVisible={dashboardPreferences.isWidgetVisible("summary")}>
-      <div className="rounded-3xl bg-gradient-to-r from-[#0F172A] via-[#1E3A8A] to-[#06B6D4] p-6 text-white">
-        <div className="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
-          <div className="max-w-3xl">
-            <div className="inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/10 px-3 py-1 text-xs uppercase tracking-[0.18em] text-white/80">
-              <Lightbulb className="h-3.5 w-3.5" />
-              <span>Decision IA</span>
+        <section className="rounded-[34px] border border-[var(--bc-ai-border)] bg-[radial-gradient(circle_at_top_left,rgba(99,102,241,0.18),transparent_22%),radial-gradient(circle_at_top_right,rgba(59,130,246,0.16),transparent_28%),linear-gradient(135deg,#0F172A_0%,#312E81_54%,#4F46E5_100%)] p-6 text-white shadow-[0_28px_80px_-48px_rgba(15,23,42,0.48)]">
+          <div className="flex flex-col gap-5 xl:flex-row xl:items-end xl:justify-between">
+            <div className="max-w-3xl">
+              <div className="inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/10 px-3 py-1 text-xs font-semibold uppercase tracking-[0.18em] text-white/80">
+                <Lightbulb className="h-3.5 w-3.5" />
+                CDR enrichi
+              </div>
+              <h1 className="mt-4 text-3xl font-bold">Recommandations IA</h1>
+              <p className="mt-3 text-sm leading-6 text-white/80">
+                Priorisation réelle issue de <span className="font-semibold">telecom_cdr_fraud_fleetconnect_enriched.csv</span>:
+                recommandation, priorité d’investigation, sévérité fraude et perte financière estimée.
+              </p>
             </div>
-            <h1 className="mt-4 text-3xl font-bold">Recommandations d'optimisation</h1>
-            <p className="mt-3 text-sm leading-6 text-white/80">
-              Priorisation des actions a accepter, rejeter ou examiner pour reduire le risque et
-              proteger le revenu.
-            </p>
-          </div>
 
-          <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
-            <div className="rounded-2xl border border-white/15 bg-white/10 p-4">
-              <p className="text-xs uppercase tracking-[0.18em] text-white/70">Cartes</p>
-              <p className="mt-2 text-3xl font-bold">{isLoading ? "--" : enrichedRecommendations.length}</p>
-            </div>
-            <div className="rounded-2xl border border-white/15 bg-white/10 p-4">
-              <p className="text-xs uppercase tracking-[0.18em] text-white/70">Economie</p>
-              <p className="mt-2 text-2xl font-bold">{isLoading ? "--" : formatMadValue(totalSavingsMad)}</p>
-            </div>
-            <div className="rounded-2xl border border-white/15 bg-white/10 p-4">
-              <p className="text-xs uppercase tracking-[0.18em] text-white/70">Lignes</p>
-              <p className="mt-2 text-3xl font-bold">{isLoading ? "--" : totalImpactedLines}</p>
-            </div>
-            <div className="rounded-2xl border border-white/15 bg-white/10 p-4">
-              <p className="text-xs uppercase tracking-[0.18em] text-white/70">Acceptees</p>
-              <p className="mt-2 text-3xl font-bold">{acceptedIds.length}</p>
+            <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+              {[
+                { label: "Actions visibles", value: `${orderedRecommendations.length}`, icon: Sparkles },
+                { label: "P1", value: `${p1Count}`, icon: ShieldAlert },
+                { label: "Perte potentielle", value: formatMadValue(totalEstimatedLoss), icon: Lightbulb },
+                { label: "Appliquees", value: `${acceptedCount}`, icon: Check },
+              ].map((item) => {
+                const Icon = item.icon;
+                return (
+                  <div
+                    key={item.label}
+                    className="rounded-3xl border border-white/15 bg-white/10 p-4 backdrop-blur-sm"
+                  >
+                    <div className="flex items-center justify-between gap-3">
+                      <p className="text-xs font-semibold uppercase tracking-[0.18em] text-white/70">
+                        {item.label}
+                      </p>
+                      <Icon className="h-4 w-4 text-white" />
+                    </div>
+                    <p className="mt-3 text-2xl font-bold">{isLoading ? "--" : item.value}</p>
+                  </div>
+                );
+              })}
             </div>
           </div>
-        </div>
-      </div>
+        </section>
       </DashboardSection>
 
       {errorMessage ? (
-        <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-600">
+        <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-600">
           {errorMessage}
         </div>
       ) : null}
@@ -277,298 +298,319 @@ export default function Recommendations() {
         visibility={dashboardPreferences.visibility}
         visibleCount={dashboardPreferences.visibleCount}
         onChange={dashboardPreferences.setWidgetVisible}
-        onReset={dashboardPreferences.resetVisibility}
+        onReset={dashboardPreferences.showAllWidgets}
       />
 
       <DashboardSection isVisible={dashboardPreferences.isWidgetVisible("filters")}>
-      <div className="rounded-2xl border border-gray-200 bg-white p-4">
-        <div className="grid grid-cols-1 gap-4 md:grid-cols-4">
-          <div className="relative md:col-span-2">
-            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#64748B]" />
-            <input
-              type="text"
-              value={searchQuery}
-              onChange={(event) => setSearchQuery(event.target.value)}
-              placeholder="Client, recommandation, justification..."
-              className="w-full rounded-xl border border-gray-200 bg-[#F8FAFC] py-2.5 pl-10 pr-4 text-sm focus:border-transparent focus:outline-none focus:ring-2 focus:ring-[#2D6CDF]"
-            />
+        <section className="rounded-[28px] border border-[var(--bc-neutral-border)] bg-white p-5 shadow-sm">
+          <div className="grid gap-4 xl:grid-cols-4">
+            <label className="relative xl:col-span-2">
+              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--bc-neutral-muted)]" />
+              <input
+                type="text"
+                value={searchQuery}
+                onChange={(event) => setSearchQuery(event.target.value)}
+                placeholder="Alerte, departement, type de fraude..."
+                className="h-12 w-full rounded-2xl border border-[var(--bc-neutral-border)] bg-[var(--bc-neutral-soft)] py-2.5 pl-10 pr-4 text-sm text-[var(--bc-neutral-strong)] outline-none transition focus:border-[var(--bc-primary)] focus:ring-2 focus:ring-[var(--bc-primary-soft)]"
+              />
+            </label>
+
+            <select
+              value={selectedOperator}
+              onChange={(event) => setSelectedOperator(event.target.value)}
+              className="h-12 rounded-2xl border border-[var(--bc-neutral-border)] bg-[var(--bc-neutral-soft)] px-4 text-sm outline-none transition focus:border-[var(--bc-primary)] focus:ring-2 focus:ring-[var(--bc-primary-soft)]"
+            >
+              <option value="all">Tous les operateurs</option>
+              {(filters?.operators ?? []).map((operator) => (
+                <option key={operator} value={operator}>
+                  {operator}
+                </option>
+              ))}
+            </select>
+
+            <select
+              value={selectedDepartment}
+              onChange={(event) => setSelectedDepartment(event.target.value)}
+              className="h-12 rounded-2xl border border-[var(--bc-neutral-border)] bg-[var(--bc-neutral-soft)] px-4 text-sm outline-none transition focus:border-[var(--bc-primary)] focus:ring-2 focus:ring-[var(--bc-primary-soft)]"
+            >
+              <option value="all">Tous les departements</option>
+              {(filters?.departments ?? []).map((department) => (
+                <option key={department} value={department}>
+                  {department}
+                </option>
+              ))}
+            </select>
           </div>
 
-          <select
-            value={selectedDepartment}
-            onChange={(event) => setSelectedDepartment(event.target.value)}
-            className="rounded-xl border border-gray-200 bg-[#F8FAFC] px-4 py-2.5 text-sm focus:border-transparent focus:outline-none focus:ring-2 focus:ring-[#2D6CDF]"
-          >
-            <option value="all">Tous les departements</option>
-            {(filters?.departments ?? []).map((department) => (
-              <option key={department} value={department}>
-                {department}
-              </option>
-            ))}
-          </select>
+          <div className="mt-4 grid gap-4 xl:grid-cols-[1fr_auto]">
+            <select
+              value={selectedSeverity}
+              onChange={(event) => setSelectedSeverity(event.target.value)}
+              className="h-12 rounded-2xl border border-[var(--bc-neutral-border)] bg-[var(--bc-neutral-soft)] px-4 text-sm outline-none transition focus:border-[var(--bc-primary)] focus:ring-2 focus:ring-[var(--bc-primary-soft)]"
+            >
+              <option value="all">Toutes les severites</option>
+              {(filters?.severities ?? []).map((severity) => (
+                <option key={severity} value={severity}>
+                  {formatSeverityLabel(severity)}
+                </option>
+              ))}
+            </select>
 
-          <select
-            value={selectedRiskLevel}
-            onChange={(event) => setSelectedRiskLevel(event.target.value)}
-            className="rounded-xl border border-gray-200 bg-[#F8FAFC] px-4 py-2.5 text-sm focus:border-transparent focus:outline-none focus:ring-2 focus:ring-[#2D6CDF]"
-          >
-            <option value="all">Tous les risques</option>
-            {(filters?.risk_levels ?? []).map((riskLevel) => (
-              <option key={riskLevel} value={riskLevel}>
-                {formatCustomerRiskLabel(riskLevel)}
-              </option>
-            ))}
-          </select>
-        </div>
-      </div>
+            <div className="flex flex-wrap gap-2">
+              <Badge variant="outline" className="bg-white">
+                Source: `telecom_cdr_fraud_fleetconnect_enriched.csv`
+              </Badge>
+            </div>
+          </div>
+        </section>
       </DashboardSection>
 
       <DashboardSection isVisible={dashboardPreferences.isWidgetVisible("recommendations")}>
-      {isLoading ? (
-        <div className="rounded-2xl border border-gray-200 bg-white px-6 py-16 text-center text-sm text-[#64748B]">
-          Chargement des recommandations IA...
-        </div>
-      ) : enrichedRecommendations.length === 0 ? (
-        <div className="rounded-2xl border border-dashed border-gray-300 bg-white px-6 py-16 text-center text-sm text-[#64748B]">
-          Aucune recommandation disponible pour les filtres actuels.
-        </div>
-      ) : (
-        <div className="grid grid-cols-1 gap-5 2xl:grid-cols-[minmax(0,1fr)_360px]">
-          <div className="space-y-5">
-            {enrichedRecommendations.map((recommendation) => {
-              const operatorStyles = getOperatorStyles(recommendation.operator);
-
-              return (
+        {isLoading ? (
+          <div className="rounded-2xl border border-[var(--bc-neutral-border)] bg-white px-6 py-16 text-center text-sm text-[var(--bc-neutral-body)]">
+            Chargement des recommandations IA...
+          </div>
+        ) : orderedRecommendations.length === 0 ? (
+          <div className="rounded-2xl border border-dashed border-[var(--bc-neutral-border)] bg-white px-6 py-16 text-center text-sm text-[var(--bc-neutral-body)]">
+            Aucune recommandation disponible pour les filtres actuels.
+          </div>
+        ) : (
+          <div className="grid gap-6 2xl:grid-cols-[minmax(0,1fr)_360px]">
+            <div className="space-y-5">
+              {orderedRecommendations.map((recommendation) => (
                 <article
-                  key={recommendation.customer_row_id}
-                  className="rounded-3xl border border-gray-200 bg-white p-5 shadow-sm"
+                  key={recommendation.cdr_row_id}
+                  className="rounded-[30px] border border-[var(--bc-neutral-border)] bg-white p-5 shadow-sm"
                 >
                   <div className="flex flex-col gap-4">
                     <div className="flex flex-col gap-3 xl:flex-row xl:items-start xl:justify-between">
                       <div>
                         <div className="flex flex-wrap items-center gap-2">
-                          <h2 className="text-xl font-semibold text-[#0F172A]">
-                            {recommendation.customer_id}
+                          <h2 className="text-xl font-semibold text-[var(--bc-neutral-strong)]">
+                            Alerte {recommendation.cdr_row_id}
                           </h2>
                           <span
-                            className={`inline-flex items-center rounded-full px-2.5 py-1 text-xs font-medium ${getCustomerRiskClasses(recommendation.risk_level)}`}
+                            className={`inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ${getSeverityClasses(
+                              recommendation.severity,
+                            )}`}
                           >
-                            {formatCustomerRiskLabel(recommendation.risk_level)}
+                            {formatSeverityLabel(recommendation.severity)}
                           </span>
-                          <span className="rounded-full border border-blue-200 bg-blue-50 px-2.5 py-1 text-xs font-medium text-[#1D4ED8]">
-                            {recommendation.recommendationKindLabel}
+                          <span
+                            className={`inline-flex rounded-full border px-2.5 py-1 text-xs font-semibold ${getPriorityTone(
+                              recommendation.investigation_priority,
+                            )}`}
+                          >
+                            {recommendation.investigation_priority}
                           </span>
-                          <span className="rounded-full border border-gray-200 bg-gray-50 px-2.5 py-1 text-xs font-medium text-[#475569]">
-                            {getDecisionStatus(recommendation.customer_row_id)}
+                          <span className="rounded-full border border-gray-200 bg-gray-50 px-2.5 py-1 text-xs font-semibold text-[#475569]">
+                            {getDecisionStatus(recommendation.cdr_row_id)}
                           </span>
                         </div>
-
-                        <p className="mt-2 text-sm text-[#64748B]">
-                          {recommendation.department} - {formatContractLabel(recommendation.contract)} -{" "}
-                          {formatTenure(recommendation.tenure)}
+                        <p className="mt-2 text-sm text-[var(--bc-neutral-body)]">
+                          {recommendation.operator_maroc} · {recommendation.department} ·{" "}
+                          {formatCallZoneLabel(recommendation.call_zone)}
                         </p>
-                        <p className="mt-1 text-sm text-[#64748B]">
-                          {formatInternetServiceLabel(recommendation.internet_service)}
+                        <p className="mt-1 text-sm text-[var(--bc-neutral-body)]">
+                          {formatFraudTypeLabel(recommendation.fraud_type)}
                         </p>
                       </div>
 
-                      <span
-                        className="inline-flex items-center rounded-full px-3 py-1 text-xs font-medium"
-                        style={operatorStyles}
-                      >
-                        {recommendation.operator}
-                      </span>
+                      <div className="flex flex-wrap gap-2">
+                        <Badge variant="outline" className="bg-white">
+                          IA {recommendation.ai_recommendation_priority}
+                        </Badge>
+                        <Badge variant="outline" className="bg-white">
+                          {formatMadValue(recommendation.estimated_financial_loss)}
+                        </Badge>
+                      </div>
                     </div>
 
                     <AIRiskInsightCard
                       riskId={recommendation.risk_id}
-                      moduleLabel="Recommandations"
+                      moduleLabel="Recommandations IA"
                       title={recommendation.title}
-                      severity={recommendation.risk_level}
+                      severity={recommendation.severity}
                       description={recommendation.recommendation_reason}
                       impact={recommendation.impact}
-                      cause={recommendation.quickSummary}
+                      cause={recommendation.description}
                       aiRecommendation={recommendation.ai_recommendation}
                       suggestedAction={recommendation.suggested_action}
                       confidenceScore={recommendation.confidence_score}
-                      recommendationStatus={getRecommendationLifecycleStatus(recommendation.customer_row_id)}
+                      recommendationStatus={getDecisionStatus(recommendation.cdr_row_id)}
                       compact
-                      onApply={() => handleAccept(recommendation.customer_row_id, recommendation.customer_id)}
-                      onIgnore={() => handleReject(recommendation.customer_row_id, recommendation.customer_id)}
-                      onSimulate={() => setSelectedRecommendationId(recommendation.customer_row_id)}
+                      onApply={() => handleAccept(recommendation)}
+                      onIgnore={() => handleReject(recommendation)}
+                      onSimulate={() => setSelectedRecommendationId(recommendation.cdr_row_id)}
                     />
 
-                    <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">
-                      <div className="rounded-2xl border border-gray-200 p-4">
-                        <p className="text-xs uppercase tracking-[0.18em] text-[#64748B]">Score</p>
-                        <p className="mt-2 text-xl font-semibold text-[#0F172A]">
-                          {formatRiskScore(recommendation.risk_score_100)}
+                    <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+                      <div className="rounded-2xl border border-[var(--bc-neutral-border)] p-4">
+                        <p className="text-xs uppercase tracking-[0.18em] text-[var(--bc-neutral-muted)]">
+                          Score
+                        </p>
+                        <p className="mt-2 text-lg font-semibold text-[var(--bc-neutral-strong)]">
+                          {formatRiskScore(recommendation.fraud_risk_score_100)}
                         </p>
                       </div>
-                      <div className="rounded-2xl border border-gray-200 p-4">
-                        <p className="text-xs uppercase tracking-[0.18em] text-[#64748B]">Probabilite</p>
-                        <p className="mt-2 text-xl font-semibold text-[#0F172A]">
-                          {formatRiskProbability(recommendation.risk_proba)}
+                      <div className="rounded-2xl border border-[var(--bc-neutral-border)] p-4">
+                        <p className="text-xs uppercase tracking-[0.18em] text-[var(--bc-neutral-muted)]">
+                          Cout appel
+                        </p>
+                        <p className="mt-2 text-lg font-semibold text-[var(--bc-neutral-strong)]">
+                          {formatMadValue(recommendation.call_cost_mad)}
                         </p>
                       </div>
-                      <div className="rounded-2xl border border-gray-200 p-4">
-                        <p className="text-xs uppercase tracking-[0.18em] text-[#64748B]">Economie</p>
-                        <p className="mt-2 text-xl font-semibold text-[#16A34A]">
-                          {formatMadValue(recommendation.simulatedFinancialGainMad)}
+                      <div className="rounded-2xl border border-[var(--bc-neutral-border)] p-4">
+                        <p className="text-xs uppercase tracking-[0.18em] text-[var(--bc-neutral-muted)]">
+                          Perte estimee
+                        </p>
+                        <p className="mt-2 text-lg font-semibold text-[#DC2626]">
+                          {formatMadValue(recommendation.estimated_financial_loss)}
                         </p>
                       </div>
-                      <div className="rounded-2xl border border-gray-200 p-4">
-                        <p className="text-xs uppercase tracking-[0.18em] text-[#64748B]">Impact</p>
-                        <p className="mt-2 text-xl font-semibold text-[#0F172A]">
-                          {recommendation.simulatedImpactedLines} lignes
+                      <div className="rounded-2xl border border-[var(--bc-neutral-border)] p-4">
+                        <p className="text-xs uppercase tracking-[0.18em] text-[var(--bc-neutral-muted)]">
+                          Priorite IA
+                        </p>
+                        <p className="mt-2 text-lg font-semibold text-[var(--bc-neutral-strong)]">
+                          {recommendation.ai_recommendation_priority}
                         </p>
                       </div>
                     </div>
 
-                    <div className="flex flex-wrap gap-2">
-                      {recommendation.key_factors.map((factor) => (
-                        <span
-                          key={factor}
-                          className="rounded-full border border-gray-200 bg-white px-3 py-1 text-xs font-medium text-[#475569]"
-                        >
-                          {formatCustomerFactorLabel(factor)}
-                        </span>
-                      ))}
-                    </div>
-
-                    <div className="flex flex-col gap-3 sm:flex-row">
-                      <button
-                        type="button"
-                        onClick={() =>
-                          handleAccept(recommendation.customer_row_id, recommendation.customer_id)
-                        }
-                        className="inline-flex items-center justify-center gap-2 rounded-2xl bg-[#16A34A] px-4 py-3 font-medium text-white transition-colors hover:bg-[#15803D]"
-                      >
+                    <div className="flex flex-wrap gap-3">
+                      <Button type="button" className="rounded-2xl" onClick={() => handleAccept(recommendation)}>
                         <Check className="h-4 w-4" />
-                        <span>Accepter</span>
-                      </button>
-                      <button
+                        Appliquer
+                      </Button>
+                      <Button
                         type="button"
-                        onClick={() =>
-                          handleReject(recommendation.customer_row_id, recommendation.customer_id)
-                        }
-                        className="inline-flex items-center justify-center gap-2 rounded-2xl bg-[#DC2626] px-4 py-3 font-medium text-white transition-colors hover:bg-[#B91C1C]"
+                        variant="destructive"
+                        className="rounded-2xl"
+                        onClick={() => handleReject(recommendation)}
                       >
                         <X className="h-4 w-4" />
-                        <span>Rejeter</span>
-                      </button>
-                      <button
+                        Ecarter
+                      </Button>
+                      <Button
                         type="button"
-                        onClick={() => setSelectedRecommendationId(recommendation.customer_row_id)}
-                        className="inline-flex items-center justify-center gap-2 rounded-2xl border border-gray-200 bg-white px-4 py-3 font-medium text-[#475569] transition-colors hover:bg-[#F8FAFC]"
+                        variant="outline"
+                        className="rounded-2xl"
+                        onClick={() => setSelectedRecommendationId(recommendation.cdr_row_id)}
                       >
                         <Eye className="h-4 w-4" />
-                        <span>Examiner</span>
-                      </button>
+                        Examiner
+                      </Button>
                     </div>
                   </div>
                 </article>
-              );
-            })}
+              ))}
+            </div>
+
+            <aside className="h-fit rounded-[30px] border border-[var(--bc-neutral-border)] bg-white p-5 shadow-sm">
+              {selectedRecommendation ? (
+                <div className="space-y-5">
+                  <div>
+                    <p className="text-xs uppercase tracking-[0.18em] text-[var(--bc-neutral-muted)]">
+                      Examen detaille
+                    </p>
+                    <h2 className="mt-2 text-2xl font-semibold text-[var(--bc-neutral-strong)]">
+                      Alerte {selectedRecommendation.cdr_row_id}
+                    </h2>
+                    <p className="mt-2 text-sm text-[var(--bc-neutral-body)]">
+                      {selectedRecommendation.operator_maroc} · {selectedRecommendation.department}
+                    </p>
+                  </div>
+
+                  <AIRecommendationBlock
+                    recommendation={selectedRecommendation.recommendation}
+                    secondaryText={selectedRecommendation.recommendation_reason}
+                    status={getDecisionStatus(selectedRecommendation.cdr_row_id)}
+                    severityLabel={formatSeverityLabel(selectedRecommendation.severity)}
+                    riskTypeLabel={formatFraudTypeLabel(selectedRecommendation.fraud_type)}
+                    scoreLabel={`Score ${formatRiskScore(selectedRecommendation.fraud_risk_score_100)}`}
+                    className="bg-[#F8FAFC]"
+                  />
+
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="rounded-2xl border border-[var(--bc-neutral-border)] p-4">
+                      <p className="text-xs uppercase tracking-[0.18em] text-[var(--bc-neutral-muted)]">
+                        Investig.
+                      </p>
+                      <p className="mt-2 text-lg font-semibold text-[var(--bc-neutral-strong)]">
+                        {selectedRecommendation.investigation_priority}
+                      </p>
+                    </div>
+                    <div className="rounded-2xl border border-[var(--bc-neutral-border)] p-4">
+                      <p className="text-xs uppercase tracking-[0.18em] text-[var(--bc-neutral-muted)]">
+                        IA
+                      </p>
+                      <p className="mt-2 text-lg font-semibold text-[var(--bc-neutral-strong)]">
+                        {selectedRecommendation.ai_recommendation_priority}
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="rounded-2xl border border-[var(--bc-neutral-border)] p-4">
+                    <p className="text-xs uppercase tracking-[0.18em] text-[var(--bc-neutral-muted)]">
+                      Impact financier
+                    </p>
+                    <p className="mt-2 text-2xl font-semibold text-[#DC2626]">
+                      {formatMadValue(selectedRecommendation.estimated_financial_loss)}
+                    </p>
+                    <p className="mt-2 text-sm text-[var(--bc-neutral-body)]">
+                      {selectedRecommendation.description}
+                    </p>
+                  </div>
+
+                  <div className="flex flex-wrap gap-3">
+                    <Button type="button" className="rounded-2xl" onClick={() => navigate("/fraude-cdr")}>
+                      <ShieldAlert className="h-4 w-4" />
+                      Ouvrir Fraude CDR
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className="rounded-2xl"
+                      onClick={() => setSelectedRecommendationId(null)}
+                    >
+                      Fermer
+                    </Button>
+                  </div>
+                </div>
+              ) : (
+                <div className="py-10 text-center text-sm text-[var(--bc-neutral-body)]">
+                  Selectionnez une recommandation pour examiner sa justification et son impact.
+                </div>
+              )}
+            </aside>
           </div>
+        )}
 
-          <aside className="h-fit rounded-3xl border border-gray-200 bg-white p-5 shadow-sm">
-            {selectedRecommendation ? (
-              <div className="space-y-5">
-                <div>
-                  <p className="text-xs uppercase tracking-[0.18em] text-[#64748B]">Examen detaille</p>
-                  <h2 className="mt-2 text-2xl font-semibold text-[#0F172A]">
-                    {selectedRecommendation.customer_id}
-                  </h2>
-                  <p className="mt-2 text-sm text-[#64748B]">
-                    {selectedRecommendation.department} -{" "}
-                    {formatContractLabel(selectedRecommendation.contract)}
-                  </p>
-                </div>
-
-                <AIRecommendationBlock
-                  recommendation={selectedRecommendation.recommendation}
-                  secondaryText={selectedRecommendation.quickSummary}
-                  status={getRecommendationLifecycleStatus(selectedRecommendation.customer_row_id)}
-                  severityLabel={formatCustomerRiskLabel(selectedRecommendation.risk_level)}
-                  riskTypeLabel={selectedRecommendation.recommendationKindLabel}
-                  scoreLabel={`Score ${formatRiskScore(selectedRecommendation.risk_score_100)}`}
-                  className="bg-[#F8FAFC]"
-                />
-
-                <div className="grid grid-cols-2 gap-3">
-                  <div className="rounded-2xl border border-gray-200 p-4">
-                    <p className="text-xs uppercase tracking-[0.18em] text-[#64748B]">Mensuel</p>
-                    <p className="mt-2 text-lg font-semibold text-[#0F172A]">
-                      {formatMadValue(selectedRecommendation.monthly_cost_mad)}
-                    </p>
-                  </div>
-                  <div className="rounded-2xl border border-gray-200 p-4">
-                    <p className="text-xs uppercase tracking-[0.18em] text-[#64748B]">Risque</p>
-                    <p className="mt-2 text-lg font-semibold text-[#0F172A]">
-                      {formatMadValue(selectedRecommendation.revenue_at_risk_mad)}
-                    </p>
-                  </div>
-                </div>
-
-                <div className="rounded-2xl border border-gray-200 p-4">
-                  <p className="text-xs uppercase tracking-[0.18em] text-[#64748B]">Justification IA</p>
-                  <p className="mt-3 text-sm leading-6 text-[#475569]">
-                    {selectedRecommendation.recommendation_reason}
-                  </p>
-                </div>
-
-                <div className="rounded-2xl border border-gray-200 p-4">
-                  <p className="text-xs uppercase tracking-[0.18em] text-[#64748B]">Pourquoi cette action</p>
-                  <div className="mt-3 space-y-2">
-                    {selectedRecommendation.whyRecommendation.map((reason) => (
-                      <div key={reason} className="rounded-xl bg-[#F8FAFC] px-3 py-2 text-sm text-[#475569]">
-                        {reason}
-                      </div>
-                    ))}
-                  </div>
-                </div>
-
-                <button
-                  type="button"
-                  onClick={() => setSelectedRecommendationId(null)}
-                  className="w-full rounded-2xl border border-gray-200 px-4 py-3 font-medium text-[#64748B] transition-colors hover:bg-[#F8FAFC]"
-                >
-                  Fermer l'examen
-                </button>
-              </div>
-            ) : (
-              <div className="py-10 text-center text-sm text-[#64748B]">
-                Selectionnez une recommandation pour examiner sa justification et son impact.
-              </div>
-            )}
-          </aside>
+        <div className="mt-5 flex flex-col gap-3 rounded-2xl border border-[var(--bc-neutral-border)] bg-white px-5 py-4 md:flex-row md:items-center md:justify-between">
+          <p className="text-sm text-[var(--bc-neutral-body)]">
+            Page {currentPage} / {totalPages} · {recommendations?.total ?? 0} recommandations
+          </p>
+          <div className="flex items-center gap-3">
+            <button
+              type="button"
+              onClick={() => setOffset((current) => Math.max(current - PAGE_SIZE, 0))}
+              disabled={offset === 0 || isLoading}
+              className="rounded-xl border border-[var(--bc-neutral-border)] px-4 py-2 text-sm font-medium text-[var(--bc-neutral-body)] transition-colors hover:bg-[var(--bc-neutral-soft)] disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              Precedent
+            </button>
+            <button
+              type="button"
+              onClick={() => setOffset((current) => current + PAGE_SIZE)}
+              disabled={isLoading || !recommendations || offset + PAGE_SIZE >= recommendations.total}
+              className="rounded-xl border border-[var(--bc-neutral-border)] px-4 py-2 text-sm font-medium text-[var(--bc-neutral-body)] transition-colors hover:bg-[var(--bc-neutral-soft)] disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              Suivant
+            </button>
+          </div>
         </div>
-      )}
-
-      <div className="flex flex-col gap-3 rounded-2xl border border-gray-200 bg-white px-5 py-4 md:flex-row md:items-center md:justify-between">
-        <p className="text-sm text-[#64748B]">
-          Page {currentPage} / {totalPages} - {recommendations?.total ?? 0} recommandations
-        </p>
-        <div className="flex items-center gap-3">
-          <button
-            type="button"
-            onClick={() => setOffset((previousOffset) => Math.max(previousOffset - PAGE_SIZE, 0))}
-            disabled={offset === 0 || isLoading}
-            className="rounded-xl border border-gray-200 px-4 py-2 text-sm font-medium text-[#64748B] transition-colors hover:bg-[#F8FAFC] disabled:cursor-not-allowed disabled:opacity-60"
-          >
-            Precedent
-          </button>
-          <button
-            type="button"
-            onClick={() => setOffset((previousOffset) => previousOffset + PAGE_SIZE)}
-            disabled={isLoading || !recommendations || offset + PAGE_SIZE >= recommendations.total}
-            className="rounded-xl border border-gray-200 px-4 py-2 text-sm font-medium text-[#64748B] transition-colors hover:bg-[#F8FAFC] disabled:cursor-not-allowed disabled:opacity-60"
-          >
-            Suivant
-          </button>
-        </div>
-      </div>
       </DashboardSection>
     </div>
   );

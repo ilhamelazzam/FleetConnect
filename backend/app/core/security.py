@@ -13,7 +13,7 @@ from app.core.config import get_settings
 ACCESS_TOKEN_TYPE = "access"
 REFRESH_TOKEN_TYPE = "refresh"
 PASSWORD_RESET_TOKEN_TYPE = "password_reset"
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/v1/auth/token")
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/v1/auth/token", auto_error=False)
 
 
 def hash_password(password: str) -> str:
@@ -55,25 +55,37 @@ def _create_token(
     return jwt.encode(payload, secret_key, algorithm=settings.jwt_algorithm)
 
 
-def create_access_token(subject: str, role: str) -> str:
+def create_access_token(subject: str, role: str, email: str | None = None) -> str:
     settings = get_settings()
+    additional_claims: dict[str, Any] = {
+        "role": role,
+        "user_id": int(subject),
+    }
+    if email:
+        additional_claims["email"] = email
     return _create_token(
         subject=subject,
         token_type=ACCESS_TOKEN_TYPE,
         expires_minutes=settings.access_token_expire_minutes,
         secret_key=settings.secret_key,
-        additional_claims={"role": role},
+        additional_claims=additional_claims,
     )
 
 
-def create_refresh_token(subject: str, role: str) -> str:
+def create_refresh_token(subject: str, role: str, email: str | None = None) -> str:
     settings = get_settings()
+    additional_claims: dict[str, Any] = {
+        "role": role,
+        "user_id": int(subject),
+    }
+    if email:
+        additional_claims["email"] = email
     return _create_token(
         subject=subject,
         token_type=REFRESH_TOKEN_TYPE,
         expires_minutes=settings.refresh_token_expire_minutes,
         secret_key=settings.effective_refresh_secret_key,
-        additional_claims={"role": role},
+        additional_claims=additional_claims,
     )
 
 

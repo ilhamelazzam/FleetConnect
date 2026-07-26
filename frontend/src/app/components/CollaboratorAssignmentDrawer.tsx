@@ -120,7 +120,7 @@ const emptyFormState: FormState = {
 function normalizeError(error: unknown, fallbackMessage: string): string {
   if (error instanceof ApiError) return error.message;
   if (error instanceof Error && error.message === "Failed to fetch") {
-    return "Connexion backend impossible. Verifiez que l'API tourne et que la base des employes importes est disponible.";
+    return "Connexion au service impossible. Verifiez que la base des employes importes est disponible.";
   }
   if (error instanceof Error) return error.message;
   return fallbackMessage;
@@ -850,7 +850,7 @@ export default function CollaboratorAssignmentDrawer({
                   <p className="text-xs text-[#64748B]">
                     {formState.source_mode === "imported" && selectedImportedEmployee && !isImportedFieldLocked("email")
                       ? "Completez un email valide si la fiche importee ne fournit qu'un identifiant."
-                      : "L'API backend attend actuellement une adresse email valide pour créer le compte."}
+                      : "Une adresse email valide est necessaire pour creer le compte."}
                   </p>
                   {fieldErrors.email ? (
                     <p className="text-xs text-[#DC2626]">{fieldErrors.email}</p>
@@ -974,7 +974,7 @@ export default function CollaboratorAssignmentDrawer({
 
             <section className="space-y-4 rounded-[24px] border border-[#E2E8F0] bg-white p-5 shadow-sm">
               <div>
-                <h3 className="text-lg font-semibold text-[#0F172A]">Attribution telecom</h3>
+                <h3 className="text-lg font-semibold text-[#0F172A]">Attribution de ligne</h3>
                 <p className="mt-1 text-sm text-[#64748B]">
                   La creation depuis cette page inclut directement la ligne et le forfait afin de
                   rendre l'attribution visible dans le tableau.
@@ -1095,7 +1095,7 @@ export default function CollaboratorAssignmentDrawer({
                     <p className="text-xs text-[#DC2626]">{fieldErrors.phone_number}</p>
                   ) : (
                     <p className="text-xs text-[#64748B]">
-                      Format international recommande pour rester compatible avec l'API.
+                      Format international recommande pour assurer la bonne prise en compte du numero.
                     </p>
                   )}
                 </div>

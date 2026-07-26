@@ -5,6 +5,10 @@ from pathlib import Path
 import pytest
 
 from app.core.config import get_settings
+from app.services.mobile_fleet_advanced_kpi_service import (
+    clear_mobile_fleet_advanced_kpi_cache,
+    get_mobile_fleet_advanced_kpis,
+)
 from app.services.mobile_fleet_service import (
     clear_mobile_fleet_cache,
     get_mobile_fleet_consumption,
@@ -22,6 +26,10 @@ Orange Maroc,Direction,Usage premium,Premium,6500,85.0,Critique,1,Optimiser l'af
 Orange Maroc,Support,Usage basique,Entrée de gamme,1700,21.0,Faible,0,Appareil conforme au besoin,0,Entrée de gamme,0,Entrée de gamme,0.9950
 """
 
+ADVANCED_KPI_CSV_CONTENT = """Nombre total d'appareils;Budget total estimé MAD;TCO total 12 mois MAD;Fleet Health Score;Score moyen d'adéquation;Appareils adaptés;Appareils inadaptés;Appareils surdimensionnés;Appareils sous-dimensionnés;Économie potentielle MAD;Alertes
+342;855000;10260000;91;87.5;288;54;20;34;126500;34 alertes budget, 12 anomalies, 8 fraudes
+"""
+
 
 @pytest.fixture
 def mobile_fleet_csv(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Path:
@@ -35,6 +43,24 @@ def mobile_fleet_csv(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Path:
     yield csv_path
 
     clear_mobile_fleet_cache()
+    get_settings.cache_clear()
+
+
+@pytest.fixture
+def mobile_fleet_advanced_kpi_csv(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> Path:
+    csv_path = tmp_path / "mobile_fleet_advanced_kpi.csv"
+    csv_path.write_text(ADVANCED_KPI_CSV_CONTENT, encoding="utf-8")
+
+    monkeypatch.setenv("MOBILE_FLEET_ADVANCED_KPI_CSV_PATH", str(csv_path))
+    get_settings.cache_clear()
+    clear_mobile_fleet_advanced_kpi_cache()
+
+    yield csv_path
+
+    clear_mobile_fleet_advanced_kpi_cache()
     get_settings.cache_clear()
 
 
@@ -93,3 +119,62 @@ Orange Maroc,IT,Usage intensif,Premium,7200,92.0,Critique,1,Optimiser immédiate
     refreshed_overview = get_mobile_fleet_overview()
     assert refreshed_overview["kpis"]["total_devices"] == 1
     assert refreshed_overview["kpis"]["critical_risks"] == 1
+
+
+def test_mobile_fleet_overview_returns_empty_payload_when_csv_is_missing(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    missing_csv = tmp_path / "missing_mobile_fleet.csv"
+
+    monkeypatch.setenv("MOBILE_FLEET_CSV_PATH", str(missing_csv))
+    get_settings.cache_clear()
+    clear_mobile_fleet_cache()
+
+    overview = get_mobile_fleet_overview()
+
+    assert overview["kpis"]["total_devices"] == 0
+    assert overview["top_devices"] == []
+
+    clear_mobile_fleet_cache()
+    get_settings.cache_clear()
+
+
+def test_mobile_fleet_overview_supports_semicolon_delimited_csv(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    csv_path = tmp_path / "mobile_fleet_semicolon.csv"
+    csv_path.write_text(
+        """operator;department;employee_profile;device_category;estimated_price_mad;budget_risk_score;risk_level;alert_flag;recommendation;real_price_range;real_price_label;predicted_price_range;predicted_price_label;prediction_confidence
+Maroc Telecom;Finance;Usage standard;Milieu de gamme;2500;42.0;Moyen;0;Appareil conforme au besoin;1;Milieu de gamme;1;Milieu de gamme;0.9622
+Orange Maroc;Direction;Usage premium;Premium;6500;85.0;Critique;1;Optimiser l'affectation premium pour la direction;3;Premium;3;Premium;0.9810
+""",
+        encoding="utf-8",
+    )
+
+    monkeypatch.setenv("MOBILE_FLEET_CSV_PATH", str(csv_path))
+    get_settings.cache_clear()
+    clear_mobile_fleet_cache()
+
+    overview = get_mobile_fleet_overview()
+
+    assert overview["kpis"]["total_devices"] == 2
+    assert overview["kpis"]["critical_risks"] == 1
+
+    clear_mobile_fleet_cache()
+    get_settings.cache_clear()
+
+
+def test_mobile_fleet_advanced_kpis_returns_expected_payload(
+    mobile_fleet_advanced_kpi_csv: Path,
+) -> None:
+    payload = get_mobile_fleet_advanced_kpis()
+
+    assert payload["total_devices"] == 342
+    assert payload["fleet_health_score"] == 91
+    assert payload["average_fit_score"] == 87.5
+    assert payload["potential_savings_mad"] == 126500.0
+    assert payload["fit_rate_pct"] == 84.21
+    assert payload["optimization_rate_pct"] == 15.79
+    assert "fraudes" in payload["alerts_summary"]

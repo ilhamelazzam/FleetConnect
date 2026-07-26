@@ -915,7 +915,7 @@ export default function LineDetail() {
       return;
     }
 
-    toast.success("Recommandation IA appliquee", {
+    toast.success("Suggestion appliquee", {
       description: "Le suivi d'usage est marque comme prioritaire pour cette ligne.",
     });
   }
@@ -994,7 +994,7 @@ export default function LineDetail() {
             </div>
             <div className="space-y-4">
               <div className="space-y-2">
-                <p className="text-sm uppercase tracking-[0.24em] text-[#64748B]">Detail de ligne telecom</p>
+                <p className="text-sm uppercase tracking-[0.24em] text-[#64748B]">Detail de la ligne</p>
                 <h1 className="text-3xl font-semibold tracking-tight text-[#0F172A]">{line.phone_number}</h1>
                 <div className="flex flex-wrap items-center gap-2 text-sm text-[#64748B]">
                   <span>Identifiant #{line.id}</span>
@@ -1040,7 +1040,7 @@ export default function LineDetail() {
                   {recommendations[0] ? formatMadValue(recommendations[0].gainMad) : "0 MAD"}
                 </p>
               </div>
-              <p className="mt-2 text-sm text-[#64748B]">Gain mensuel potentiel via optimisation IA.</p>
+              <p className="mt-2 text-sm text-[#64748B]">Gain mensuel potentiel apres optimisation.</p>
             </div>
           </div>
         </div>
@@ -1103,7 +1103,7 @@ export default function LineDetail() {
           <div>
             <h2 className="text-2xl font-semibold text-[#0F172A]">Consommation en cours</h2>
             <p className="mt-2 text-sm text-[#64748B]">
-              Data issue de la ligne. Voix, SMS et roaming sont estimes tant que l'API ne publie pas le detail mensuel complet.
+              Donnees issues de la ligne. Voix, SMS et roaming sont estimes tant que le detail mensuel complet n'est pas disponible.
             </p>
           </div>
           <Badge className={riskMeta.badgeClassName}>
@@ -1270,7 +1270,7 @@ export default function LineDetail() {
               <Sparkles className="h-5 w-5" />
             </span>
             <div>
-              <h2 className="text-2xl font-semibold text-[#0F172A]">Recommandations IA</h2>
+              <h2 className="text-2xl font-semibold text-[#0F172A]">Suggestions d'optimisation</h2>
               <p className="mt-1 text-sm text-[#475569]">Actions guidantes avec impact budgetaire et metier.</p>
             </div>
           </div>

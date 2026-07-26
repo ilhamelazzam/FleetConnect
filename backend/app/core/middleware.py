@@ -1,3 +1,5 @@
+import logging
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from starlette.middleware.base import BaseHTTPMiddleware
@@ -5,6 +7,8 @@ from starlette.middleware.httpsredirect import HTTPSRedirectMiddleware
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 
 from app.core.config import Settings
+
+MIDDLEWARE_LOGGER = logging.getLogger("app.middleware")
 
 
 class SecurityHeadersMiddleware(BaseHTTPMiddleware):
@@ -19,7 +23,7 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         response.headers.setdefault("Referrer-Policy", "strict-origin-when-cross-origin")
         response.headers.setdefault(
             "Permissions-Policy",
-            "camera=(), geolocation=(), microphone=()",
+            "camera=(), geolocation=(self), microphone=(self)",
         )
 
         if self.include_hsts:
@@ -32,12 +36,21 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
 
 
 def configure_middlewares(app: FastAPI, settings: Settings) -> None:
+    MIDDLEWARE_LOGGER.info(
+        "event=CORS_ALLOWED_ORIGINS origins=%s allow_origin_regex=%s allow_credentials=%s allow_methods=%s allow_headers=%s",
+        settings.cors_origins,
+        settings.cors_allow_origin_regex,
+        True,
+        ["*"],
+        ["*"],
+    )
     app.add_middleware(
         CORSMiddleware,
         allow_origins=settings.cors_origins,
+        allow_origin_regex=settings.cors_allow_origin_regex,
         allow_credentials=True,
-        allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-        allow_headers=["Authorization", "Content-Type"],
+        allow_methods=["*"],
+        allow_headers=["*"],
     )
 
     if settings.trusted_hosts:

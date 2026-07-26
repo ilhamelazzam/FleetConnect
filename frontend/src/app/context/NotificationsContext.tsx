@@ -4,11 +4,13 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type ReactNode,
 } from "react";
 
 import {
+  ApiError,
   notificationsApi,
   type ApiNotification,
   type ApiNotificationFilter,
@@ -28,25 +30,46 @@ interface NotificationsContextValue {
   deleteNotification: (notificationId: number) => Promise<void>;
 }
 
-const NotificationsContext = createContext<NotificationsContextValue | undefined>(undefined);
+type NotificationsContextGlobal = typeof globalThis & {
+  __fleetconnect_notifications_context__?: ReturnType<
+    typeof createContext<NotificationsContextValue | undefined>
+  >;
+};
+
+const notificationsContextGlobal = globalThis as NotificationsContextGlobal;
+const NotificationsContext =
+  notificationsContextGlobal.__fleetconnect_notifications_context__ ??
+  createContext<NotificationsContextValue | undefined>(undefined);
+
+notificationsContextGlobal.__fleetconnect_notifications_context__ = NotificationsContext;
+const ENABLE_NOTIFICATION_DEBUG_LOGS = import.meta.env.DEV;
 
 export function NotificationsProvider({ children }: { children: ReactNode }) {
-  const { token, isAuthenticated } = useAuth();
+  const { token, isAuthenticated, isLoading: isAuthLoading } = useAuth();
   const [notifications, setNotifications] = useState<ApiNotification[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
   const [totalCount, setTotalCount] = useState(0);
   const [activeFilter, setActiveFilter] = useState<ApiNotificationFilter>("all");
   const [isLoading, setIsLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const authBlockedRef = useRef(false);
 
   const refreshNotifications = useCallback(async () => {
-    if (!token || !isAuthenticated) {
+    if (isAuthLoading || !token || !isAuthenticated || authBlockedRef.current) {
       setNotifications([]);
       setUnreadCount(0);
       setTotalCount(0);
       return;
     }
 
+    if (ENABLE_NOTIFICATION_DEBUG_LOGS) {
+      console.debug("[notifications] fetch_started", {
+        endpoint: "/notifications",
+        filter: activeFilter,
+        limit: 50,
+        hasToken: Boolean(token),
+      });
+    }
     setIsLoading(true);
     setErrorMessage(null);
     try {
@@ -54,22 +77,55 @@ export function NotificationsProvider({ children }: { children: ReactNode }) {
         filter: activeFilter,
         limit: 50,
       });
+      authBlockedRef.current = false;
       setNotifications(response.items);
       setUnreadCount(response.unread_count);
       setTotalCount(response.total);
+      if (ENABLE_NOTIFICATION_DEBUG_LOGS) {
+        console.debug("[notifications] fetch_completed", {
+          endpoint: "/notifications",
+          status: 200,
+          total: response.total,
+          unread: response.unread_count,
+        });
+      }
     } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : "Notifications indisponibles.");
+      if (
+        error instanceof ApiError &&
+        (error.status === 401 || error.status === 403 || error.code === "AUTH_ERROR" || error.code === "UNAUTHORIZED")
+      ) {
+        authBlockedRef.current = true;
+        setNotifications([]);
+        setUnreadCount(0);
+        setTotalCount(0);
+        setErrorMessage("Session expiree.");
+        if (ENABLE_NOTIFICATION_DEBUG_LOGS) {
+          console.debug("[notifications] fetch_blocked_after_auth_error", {
+            endpoint: "/notifications",
+            status: error.status,
+            code: error.code,
+          });
+        }
+      } else {
+        setErrorMessage(error instanceof Error ? error.message : "Notifications indisponibles.");
+      }
     } finally {
       setIsLoading(false);
     }
-  }, [activeFilter, isAuthenticated, token]);
+  }, [activeFilter, isAuthenticated, isAuthLoading, token]);
+
+  useEffect(() => {
+    if (!token || !isAuthenticated) {
+      authBlockedRef.current = false;
+    }
+  }, [isAuthenticated, token]);
 
   useEffect(() => {
     void refreshNotifications();
   }, [refreshNotifications]);
 
   useEffect(() => {
-    if (!token || !isAuthenticated) {
+    if (isAuthLoading || !token || !isAuthenticated || authBlockedRef.current) {
       return undefined;
     }
 
@@ -78,7 +134,7 @@ export function NotificationsProvider({ children }: { children: ReactNode }) {
     }, 30000);
 
     return () => window.clearInterval(intervalId);
-  }, [isAuthenticated, refreshNotifications, token]);
+  }, [isAuthenticated, isAuthLoading, refreshNotifications, token]);
 
   const markAsRead = useCallback(
     async (notificationId: number) => {

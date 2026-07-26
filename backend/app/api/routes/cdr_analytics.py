@@ -5,6 +5,7 @@ from fastapi import APIRouter, HTTPException, Path, Query, status
 from app.core.dependencies import (
     DEFAULT_PAGE_SIZE,
     CurrentActiveUser,
+    DbSession,
     PaginationLimit,
     PaginationOffset,
 )
@@ -12,7 +13,9 @@ from app.schemas.cdr_analytics import (
     CdrAlertDetailRead,
     CdrAlertListRead,
     CdrFiltersRead,
+    CdrMapRead,
     CdrOverviewRead,
+    CdrRoamingMapRead,
     CdrRecommendationListRead,
 )
 from app.services.cdr_analytics_service import (
@@ -22,6 +25,8 @@ from app.services.cdr_analytics_service import (
     list_cdr_alerts,
     list_cdr_recommendations,
 )
+from app.services.cdr_map_service import get_cdr_map_data
+from app.services.roaming_map_service import get_roaming_map_data
 
 router = APIRouter(prefix="/cdr-analytics", tags=["cdr-analytics"])
 
@@ -119,3 +124,57 @@ def read_cdr_recommendations(
         severity=_normalize_optional_filter(severity),
     )
     return CdrRecommendationListRead(**recommendations)
+
+
+@router.get("/roaming-map", response_model=CdrRoamingMapRead)
+def read_roaming_map(
+    _: CurrentActiveUser,
+    db: DbSession,
+    country: Annotated[str | None, Query()] = None,
+    operator: Annotated[str | None, Query()] = None,
+    department: Annotated[str | None, Query()] = None,
+    risk_level: Annotated[str | None, Query()] = None,
+    min_roaming_cost_mad: Annotated[float | None, Query(ge=0)] = None,
+    period_from: Annotated[str | None, Query()] = None,
+    period_to: Annotated[str | None, Query()] = None,
+) -> CdrRoamingMapRead:
+    return CdrRoamingMapRead(
+        **get_roaming_map_data(
+            db,
+            country=_normalize_optional_filter(country),
+            operator=_normalize_optional_filter(operator),
+            department=_normalize_optional_filter(department),
+            risk_level=_normalize_optional_filter(risk_level),
+            min_roaming_cost_mad=min_roaming_cost_mad,
+            period_from=_normalize_optional_filter(period_from),
+            period_to=_normalize_optional_filter(period_to),
+        )
+    )
+
+
+@router.get("/map", response_model=CdrMapRead)
+def read_cdr_map(
+    _: CurrentActiveUser,
+    mode: Annotated[str | None, Query()] = None,
+    scope: Annotated[str | None, Query()] = None,
+    operator: Annotated[str | None, Query()] = None,
+    department: Annotated[str | None, Query()] = None,
+    risk_level: Annotated[str | None, Query()] = None,
+    fraud_severity: Annotated[str | None, Query()] = None,
+    region: Annotated[str | None, Query()] = None,
+    date_from: Annotated[str | None, Query()] = None,
+    date_to: Annotated[str | None, Query()] = None,
+) -> CdrMapRead:
+    return CdrMapRead(
+        **get_cdr_map_data(
+            mode=_normalize_optional_filter(mode),
+            scope=_normalize_optional_filter(scope),
+            operator=_normalize_optional_filter(operator),
+            department=_normalize_optional_filter(department),
+            risk_level=_normalize_optional_filter(risk_level),
+            fraud_severity=_normalize_optional_filter(fraud_severity),
+            region=_normalize_optional_filter(region),
+            date_from=_normalize_optional_filter(date_from),
+            date_to=_normalize_optional_filter(date_to),
+        )
+    )

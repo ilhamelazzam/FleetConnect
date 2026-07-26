@@ -70,6 +70,22 @@ class MobileFleetOverviewRead(BaseModel):
     top_devices: list[MobileFleetDeviceRead] = Field(default_factory=list)
 
 
+class MobileFleetAdvancedKpiRead(BaseModel):
+    total_devices: int
+    total_estimated_budget_mad: float
+    total_cost_12_months_mad: float
+    fleet_health_score: int
+    average_fit_score: float
+    adapted_devices: int
+    unfit_devices: int
+    oversized_devices: int
+    undersized_devices: int
+    potential_savings_mad: float
+    alerts_summary: str
+    fit_rate_pct: float
+    optimization_rate_pct: float
+
+
 class MobileFleetConsumptionRead(BaseModel):
     kpis: MobileFleetKpiRead
     budget_by_operator: list[MobileFleetBudgetBreakdownRead] = Field(default_factory=list)

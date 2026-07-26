@@ -1,3 +1,4 @@
+import logging
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
@@ -7,6 +8,7 @@ from fastapi.responses import RedirectResponse
 from app.core.roles import ADMIN_ROLE, PUBLIC_REGISTRATION_ROLES
 from app.core.dependencies import CurrentActiveUser, DbSession
 from app.core.rate_limit import auth_rate_limit
+from app.core.logging import mask_email
 from app.schemas.auth import (
     ForgotPasswordRequest,
     ForgotPasswordResponse,
@@ -21,7 +23,12 @@ from app.schemas.auth import (
     VerifyResetCodeRequest,
 )
 from app.schemas.user import UserCreate, UserRead
-from app.services.auth_service import authenticate_user, create_token_response, refresh_user_tokens
+from app.services.auth_service import (
+    authenticate_super_admin,
+    authenticate_user,
+    create_token_response,
+    refresh_user_tokens,
+)
 from app.services.oauth_service import (
     GOOGLE_PROVIDER,
     MICROSOFT_PROVIDER,
@@ -40,6 +47,7 @@ from app.services.password_reset_service import (
 from app.services.user_service import create_user, get_user_by_email
 
 router = APIRouter(tags=["auth"])
+AUTH_LOGGER = logging.getLogger("app.auth")
 
 
 def apply_no_store_headers(response: Response) -> None:
@@ -55,6 +63,11 @@ def login(
     db: DbSession,
     _: Annotated[None, Depends(auth_rate_limit)],
 ) -> TokenResponse:
+    AUTH_LOGGER.info(
+        "event=LOGIN_REQUEST_RECEIVED email=%s client_ip=%s",
+        mask_email(str(payload.email)),
+        request.client.host if request.client else None,
+    )
     user = authenticate_user(
         db,
         str(payload.email),
@@ -66,6 +79,30 @@ def login(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid credentials",
         )
+
+    apply_no_store_headers(response)
+    return create_token_response(user)
+
+
+@router.post("/admin/login", response_model=TokenResponse)
+def admin_login(
+    payload: LoginRequest,
+    response: Response,
+    request: Request,
+    db: DbSession,
+    _: Annotated[None, Depends(auth_rate_limit)],
+) -> TokenResponse:
+    AUTH_LOGGER.info(
+        "event=ADMIN_LOGIN_REQUEST_RECEIVED email=%s client_ip=%s",
+        mask_email(str(payload.email)),
+        request.client.host if request.client else None,
+    )
+    user = authenticate_super_admin(
+        db,
+        str(payload.email),
+        payload.password,
+        client_ip=request.client.host if request.client else None,
+    )
 
     apply_no_store_headers(response)
     return create_token_response(user)
@@ -152,10 +189,17 @@ def reset_user_password(
 
 @router.get("/oauth/providers", response_model=OAuthProvidersResponse)
 def read_oauth_providers(response: Response) -> OAuthProvidersResponse:
+    google_configured = is_oauth_provider_configured(GOOGLE_PROVIDER)
+    microsoft_configured = is_oauth_provider_configured(MICROSOFT_PROVIDER)
+    AUTH_LOGGER.info(
+        "event=OAUTH_PROVIDER_REQUEST google_configured=%s microsoft_configured=%s",
+        google_configured,
+        microsoft_configured,
+    )
     apply_no_store_headers(response)
     return OAuthProvidersResponse(
-        google=OAuthProviderStatus(configured=is_oauth_provider_configured(GOOGLE_PROVIDER)),
-        microsoft=OAuthProviderStatus(configured=is_oauth_provider_configured(MICROSOFT_PROVIDER)),
+        google=OAuthProviderStatus(configured=google_configured),
+        microsoft=OAuthProviderStatus(configured=microsoft_configured),
     )
 
 

@@ -9,6 +9,7 @@ from app.core.dependencies import (
     PaginationOffset,
 )
 from app.schemas.customer_churn import (
+    CustomerChurnConsumptionRead,
     CustomerChurnCustomerListRead,
     CustomerChurnFiltersRead,
     CustomerChurnOverviewRead,
@@ -17,6 +18,7 @@ from app.schemas.customer_churn import (
     CustomerChurnReportsRead,
 )
 from app.services.customer_churn_service import (
+    get_customer_churn_consumption,
     get_customer_churn_filters,
     get_customer_churn_overview,
     get_customer_churn_reports,
@@ -100,6 +102,41 @@ def read_customer_churn_overview(
         )
     )
     return CustomerChurnOverviewRead(**overview)
+
+
+@router.get("/consumption", response_model=CustomerChurnConsumptionRead)
+def read_customer_churn_consumption(
+    _: CurrentActiveUser,
+    search: Annotated[str | None, Query()] = None,
+    operator: Annotated[str | None, Query()] = None,
+    department: Annotated[str | None, Query()] = None,
+    contract: Annotated[str | None, Query()] = None,
+    payment_method: Annotated[str | None, Query()] = None,
+    internet_service: Annotated[str | None, Query()] = None,
+    plan: Annotated[str | None, Query()] = None,
+    price_range: Annotated[str | None, Query()] = None,
+    risk_level: Annotated[str | None, Query()] = None,
+    tenure_group: Annotated[str | None, Query()] = None,
+    churn_status: Annotated[str | None, Query()] = None,
+    prediction_status: Annotated[str | None, Query()] = None,
+) -> CustomerChurnConsumptionRead:
+    consumption = get_customer_churn_consumption(
+        **_build_query_filters(
+            search=search,
+            operator=operator,
+            department=department,
+            contract=contract,
+            payment_method=payment_method,
+            internet_service=internet_service,
+            plan=plan,
+            price_range=price_range,
+            risk_level=risk_level,
+            tenure_group=tenure_group,
+            churn_status=churn_status,
+            prediction_status=prediction_status,
+        )
+    )
+    return CustomerChurnConsumptionRead(**consumption)
 
 
 @router.get("/filters", response_model=CustomerChurnFiltersRead)
